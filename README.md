@@ -44,8 +44,8 @@ Generative Minimal Sequencer (VCV Rack via IAC) with 3 Channels + MIDI Clock
    - Open **Audio MIDI Setup** → **MIDI Studio** → **IAC Driver** → Check "Enable Device."
 2. Configure VCV Rack:
    - Add one instance of "Core → MIDI-CV" for each channel:
-     - **Melody**: Channel 1
-     - **Bass**: Channel 2
+     - **Bass**: Channel 1
+     - **Melody**: Channel 2
      - **Lead**: Channel 3
    - Set the device to "IAC Driver Bus 1" (or equivalent).
 3. (Optional) Add a "MIDI Clock" module to synchronize the clock.
@@ -61,13 +61,11 @@ Generative Minimal Sequencer (VCV Rack via IAC) with 3 Channels + MIDI Clock
    ```
 3. Follow the prompts to select the MIDI device (default: IAC).
 
-### Configuration
-- Modify `prompt.txt` to customize the sequencer's behavior.
-- Example `prompt.txt`:
+### Writing a Prompt
+- The `prompt.txt` file should contain a description of the kind of music you want to generate.
+- Example prompt:
   ```
-  bpm: 120
-  scale: dorian
-  progression_degrees: [0, 3, 4, 5]
+  Create a slow, evolving sequence in the style of Philip Glass. Use repeating arpeggios and minimal harmonic changes to build a meditative atmosphere. The rhythm should be steady but not mechanical, with subtle variations over time. Keep the dynamics soft and flowing, letting layers overlap gradually. Focus on consonant harmonies and smooth transitions, evoking a sense of timelessness and quiet intensity.
   ```
 
 ### Stopping the Sequencer

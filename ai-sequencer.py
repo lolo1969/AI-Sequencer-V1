@@ -485,7 +485,7 @@ def main():
     CONFIG = DEFAULT_CONFIG.copy()
     CONFIG.update(user_cfg)
 
-    # Force channel mapping: 1 = Bass, 2 = Melody, 3 = Lead
+    # Ensure channel mapping: 1 = Bass, 2 = Melody, 3 = Lead
     CONFIG["bass_channel"] = 1
     CONFIG["melody_channel"] = 2
     CONFIG["lead_channel"] = 3
