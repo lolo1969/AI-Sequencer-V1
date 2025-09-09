@@ -35,7 +35,13 @@ from typing import List, Dict, Any
 import numpy as np
 import mido
 from mido import Message
-import openai
+from openai import OpenAI
+
+api_key = os.getenv("OPENAI_API_KEY")
+if not api_key:
+    raise RuntimeError("OPENAI_API_KEY environment variable not set!")
+
+client = OpenAI(api_key=api_key)
 
 def load_config_from_prompt(prompt_path: str) -> Dict[str, Any]:
     """
@@ -100,11 +106,12 @@ def generate_config_from_prompt(prompt_path: str) -> Dict[str, Any]:
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         raise RuntimeError("OPENAI_API_KEY environment variable not set!")
-    openai.api_key = api_key
 
     system_msg = (
         "You are an AI music assistant for a generative MIDI sequencer. "
-        "Read the user's prompt and generate a JSON object with all necessary parameters for the sequencer script. "
+        "Generate a JSON object with musical parameters that create coherent and musical sequences. "
+        "Focus on diatonic harmony, smooth voice leading, and balanced rhythmic patterns. "
+        "Ensure the bass provides a strong harmonic foundation, the melody is lyrical, and the lead adds expressive ornamentation. "
         "Use meaningful values for bpm, scale, root, bars, steps_per_bar, progression_degrees, "
         "mel_base_motif_degrees, mel_max_register_shift, mel_evolve_every_bars, mel_tie_bias, mel_min_len_steps, mel_max_len_steps, mel_ghost_prob, "
         "bass_base_motif_degrees, bass_register_offset_oct, bass_max_register_shift, bass_evolve_every_bars, bass_tie_bias, bass_min_len_steps, bass_max_len_steps, "
@@ -113,24 +120,26 @@ def generate_config_from_prompt(prompt_path: str) -> Dict[str, Any]:
         "Respond only with the JSON object, no explanations."
     )
 
-    # Correct method for openai>=1.0.0
-    response = openai.chat.completions.create(
-        model="gpt-3.5-turbo",
+    try:
+        response = client.chat.completions.create(model="gpt-3.5-turbo",
         messages=[
             {"role": "system", "content": system_msg},
-            {"role": "user", "content": prompt}
+            {"role": "user", "content": prompt},
         ],
         temperature=0.7,
-        max_tokens=800
-    )
-    import json
-    try:
-        cfg = json.loads(response.choices[0].message.content)
-        return cfg
+        max_tokens=800)
+        content = response.choices[0].message.content
+        return json.loads(content)
     except Exception as e:
         print("[SequencerVCV] Error parsing AI response:", e)
-        print("[SequencerVCV] AI response was:", response.choices[0].message.content)
         return {}
+
+# Predefined motifs for more musical starting points
+DEFAULT_MOTIFS = {
+    "melody": [0, 2, 4, 5],
+    "bass": [0, -2, -4],
+    "lead": [7, 9, 12],
+}
 
 # ---------------- Configuration ----------------
 DEFAULT_CONFIG: Dict[str, Any] = {
@@ -232,7 +241,7 @@ def scale_note(root: int, degree: int, scale_name: str) -> int:
 # ---------------- State ----------------
 class LaneState:
     def __init__(self, motif_degrees: List[int], max_register_shift: int):
-        self.motif = motif_degrees.copy()
+        self.motif = motif_degrees.copy() if motif_degrees else DEFAULT_MOTIFS.get("melody", [0])
         self.register = 0
         self.rotation = 0
         self.max_reg = max_register_shift
@@ -249,7 +258,7 @@ class LaneState:
             elif len(self.motif) > 2:
                 self.motif.pop(random.randrange(len(self.motif)))
         else:
-            self.register = int(np.clip(self.register + random.choice([-1,1]), -self.max_reg, self.max_reg))
+            self.register = int(np.clip(self.register + random.choice([-1, 1]), -self.max_reg, self.max_reg))
 
     def degrees_for_cycle(self) -> List[int]:
         if not self.motif:
@@ -260,9 +269,18 @@ class LaneState:
 class GlobalState:
     def __init__(self, cfg: Dict[str, Any]):
         self.cfg = cfg
-        self.mel = LaneState(cfg["mel_base_motif_degrees"], cfg["mel_max_register_shift"])
-        self.bass = LaneState(cfg["bass_base_motif_degrees"], cfg["bass_max_register_shift"])
-        self.lead = LaneState(cfg["lead_base_motif_degrees"], cfg["lead_max_register_shift"])
+        self.mel = LaneState(
+            cfg.get("mel_base_motif_degrees", DEFAULT_MOTIFS["melody"]),
+            cfg.get("mel_max_register_shift", 1)
+        )
+        self.bass = LaneState(
+            cfg.get("bass_base_motif_degrees", DEFAULT_MOTIFS["bass"]),
+            cfg.get("bass_max_register_shift", 1)
+        )
+        self.lead = LaneState(
+            cfg.get("lead_base_motif_degrees", DEFAULT_MOTIFS["lead"]),
+            cfg.get("lead_max_register_shift", 1)
+        )
         self.iter = 0
 
 # ---------------- Pattern Construction ----------------
@@ -275,43 +293,35 @@ def build_lane(cfg: Dict[str, Any], lane: LaneState, role: str) -> List[Dict[str
     if not isinstance(bias_map, dict):
         # If AI only provides a float, convert it
         bias_map = {"mel": bias_map, "bass": bias_map, "lead": bias_map}
+
     if role == "mel":
-        Lmin = cfg.get("mel_min_len_steps", 2)
-        Lmax = cfg.get("mel_max_len_steps", 16)
-        tie_bias = cfg.get("mel_tie_bias", 0.7)
-        vel0 = cfg.get("melody_velocity", 96)
-        reg_off = 0
-        ghost_prob = cfg.get("mel_ghost_prob", 0.04)
+        Lmin, Lmax = cfg.get("mel_min_len_steps", 2), cfg.get("mel_max_len_steps", 16)
+        tie_bias, vel0 = cfg.get("mel_tie_bias", 0.7), cfg.get("melody_velocity", 96)
+        reg_off, ghost_prob = 0, cfg.get("mel_ghost_prob", 0.04)
         gate_lo, gate_hi = cfg.get("mel_gate_var", (0.8, 1.0))
         chord_bias = bias_map.get("mel", 0.7)
     elif role == "bass":
-        Lmin = cfg.get("bass_min_len_steps", 16)
-        Lmax = cfg.get("bass_max_len_steps", 64)
-        tie_bias = cfg.get("bass_tie_bias", 0.95)
-        vel0 = cfg.get("bass_velocity", 100)
-        reg_off = cfg.get("bass_register_offset_oct", -1) * 12
-        ghost_prob = 0.0
+        Lmin, Lmax = cfg.get("bass_min_len_steps", 16), cfg.get("bass_max_len_steps", 64)
+        tie_bias, vel0 = cfg.get("bass_tie_bias", 0.95), cfg.get("bass_velocity", 100)
+        reg_off, ghost_prob = cfg.get("bass_register_offset_oct", -1) * 12, 0.0
         gate_lo, gate_hi = cfg.get("bass_gate_var", (0.9, 1.0))
         chord_bias = bias_map.get("bass", 1.0)
     else:  # lead
-        Lmin = cfg.get("lead_min_len_steps", 1)
-        Lmax = cfg.get("lead_max_len_steps", 8)
-        tie_bias = cfg.get("lead_tie_bias", 0.45)
-        vel0 = cfg.get("lead_velocity", 92)
-        reg_off = cfg.get("lead_register_offset_oct", 1) * 12
-        ghost_prob = cfg.get("lead_ghost_prob", 0.02)
+        Lmin, Lmax = cfg.get("lead_min_len_steps", 1), cfg.get("lead_max_len_steps", 8)
+        tie_bias, vel0 = cfg.get("lead_tie_bias", 0.45), cfg.get("lead_velocity", 92)
+        reg_off, ghost_prob = cfg.get("lead_register_offset_oct", 1) * 12, cfg.get("lead_ghost_prob", 0.02)
         gate_lo, gate_hi = cfg.get("lead_gate_var", (0.4, 0.9))
         chord_bias = bias_map.get("lead", 0.6)
 
-    events: List[Dict[str,int]] = []
+    events: List[Dict[str, int]] = []
     step_cursor = 0
-    Lscale = scale_len(cfg.get("mode", cfg.get("scale", "dorian")))  # Prefer mode
+    Lscale = scale_len(cfg.get("mode", cfg.get("scale", "dorian")))
 
     while step_cursor < steps_total:
         bar_idx = step_cursor // steps_per_bar
         if cfg.get("harmony_enable", True):
             block = cfg.get("chord_change_every_bars", 2)
-            prog = cfg.get("progression_degrees", [0,5,3,4])
+            prog = cfg.get("progression_degrees", [0, 5, 3, 4])
             chord_deg = prog[(bar_idx // max(1, block)) % len(prog)]
             chord_tones = chord_degrees(cfg.get("mode", cfg.get("scale", "dorian")), chord_deg, add_seventh=True)
         else:
@@ -319,7 +329,7 @@ def build_lane(cfg: Dict[str, Any], lane: LaneState, role: str) -> List[Dict[str
 
         if chord_tones and random.random() < chord_bias:
             if role == "bass":
-                base_choice = random.choice([0,4])
+                base_choice = random.choice([0, 4])
                 deg = (chord_deg + base_choice) % Lscale
             else:
                 deg = random.choice(chord_tones)
@@ -332,10 +342,10 @@ def build_lane(cfg: Dict[str, Any], lane: LaneState, role: str) -> List[Dict[str
         if random.random() < tie_bias:
             length = random.randint(max(Lmin, 2), Lmax)
         else:
-            length = random.randint(Lmin, max(Lmin+1, int(Lmax*0.5)))
+            length = random.randint(Lmin, max(Lmin + 1, int(Lmax * 0.5)))
         length = int(np.clip(length, 1, steps_total - step_cursor))
 
-        vel = int(np.clip(vel0 + random.randint(-3, 3), 1, 127))
+        vel = int(np.clip(vel0 + random.randint(-10, 10), 1, 127))  # Add velocity variation
         gate = float(random.uniform(gate_lo, gate_hi))
         events.append({"step": step_cursor, "note": note, "len": length, "vel": vel, "gate": gate})
 
@@ -343,11 +353,11 @@ def build_lane(cfg: Dict[str, Any], lane: LaneState, role: str) -> List[Dict[str
             ghost_len = max(1, length // 4)
             ghost_vel = max(1, int(vel * 0.55))
             ghost_gate = max(0.2, gate * 0.6)
-            events.append({"step": max(0, step_cursor-1), "note": note, "len": ghost_len, "vel": ghost_vel, "gate": ghost_gate})
+            events.append({"step": max(0, step_cursor - 1), "note": note, "len": ghost_len, "vel": ghost_vel, "gate": ghost_gate})
 
         step_cursor += length
 
-    events.sort(key=lambda e: e["step"]) 
+    events.sort(key=lambda e: e["step"])
     return events
 
 
@@ -384,7 +394,7 @@ class MidiClock:
             self.port.send(Message('stop'))   # 0xFC
 
     def _run(self):
-        bpm = self.cfg["bpm"]
+        bpm = self.cfg.get("bpm", 120)  # Default to 120 BPM if missing
         interval = (60.0 / bpm) / 24.0  # 24 PPQN
         while self.running:
             self.port.send(Message('clock'))  # 0xF8
@@ -393,9 +403,9 @@ class MidiClock:
 # ---------------- Playback ----------------
 
 def play_pattern(port, cfg: Dict[str, Any], patt: Dict[str, Any]):
-    bpm = cfg["bpm"]
+    bpm = cfg.get("bpm", 120)  # Default to 120 BPM if missing
     step_dur = (60.0 / bpm) / 4.0  # 16th notes
-    total_steps = cfg["steps_per_bar"] * cfg["bars"]
+    total_steps = cfg.get("steps_per_bar", 16) * cfg.get("bars", 8)
     swing = float(cfg.get("swing", 0.0))
     jitter = cfg.get("jitter_ms", 0) / 1000.0
 
@@ -419,7 +429,7 @@ def play_pattern(port, cfg: Dict[str, Any], patt: Dict[str, Any]):
             for ev in schedules[name][s]:
                 note = int(ev["note"])
                 vel = int(ev["vel"])
-                length_steps = int(ev["len"]) 
+                length_steps = int(ev["len"])
                 gate_frac = float(ev.get("gate", 0.95))
 
                 dur = step_dur * length_steps
