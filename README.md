@@ -7,7 +7,7 @@ Generative minimal sequencer for any MIDI device with 4 channels: Bass, Melody, 
 - Starts with a small motif (few notes)
 - Slowly evolves: small changes per cycle (add/rotate/register-shift)
 - Long gates/ties (configurable), subtle phase shifts, humanization
-- Polyphonic MIDI output (all channels play simultaneously)
+- Multi-channel MIDI output (all channels play simultaneously)
 - MIDI range and config validation
 - Stable tempo (recommended: hardware clock or internal clock module)
 - Reliable shutdown
