@@ -1,71 +1,71 @@
 # AI Sequencer V1
 
-Generativer Minimal-Sequencer für beliebige MIDI-Geräte mit 4 Kanälen: Bass, Melody, Lead, Arp
+Generative minimal sequencer for any MIDI device with 4 channels: Bass, Melody, Lead, Arp
 
 ## Features
-- 4 unabhängige Kanäle: Bass, Melody, Lead, Arp (Arpeggio)
-- Startet mit wenigen Noten (Motiv)
-- Langsame Evolution: kleine Änderungen pro Zyklus (Add/Rotate/Register-Shift)
-- Lange Gates/Ties (steuerbar), subtile Phasenverschiebungen, Humanisierung
-- Polyphoner MIDI-Output (alle Kanäle gleichzeitig)
-- MIDI-Range- und Config-Validierung
-- Stabiles Tempo (empfohlen: Hardware-Clock oder internes Clock-Modul)
-- Shutdown funktioniert zuverlässig
-- **Arp-Kanal:** Schnelle Arpeggios, kurze Noten, staccato, chord-basiert
-- OpenAI GPT-3.5-turbo für musikalische Parameter aus Textprompt
+- 4 independent channels: Bass, Melody, Lead, Arp (Arpeggio)
+- Starts with a small motif (few notes)
+- Slowly evolves: small changes per cycle (add/rotate/register-shift)
+- Long gates/ties (configurable), subtle phase shifts, humanization
+- Polyphonic MIDI output (all channels play simultaneously)
+- MIDI range and config validation
+- Stable tempo (recommended: hardware clock or internal clock module)
+- Reliable shutdown
+- **Arp channel:** Fast arpeggios, short notes, staccato, chord-based
+- OpenAI GPT-3.5-turbo for musical parameters from text prompt
 
 ## Installation
 
 ### Requirements
-- Python 3.8 oder höher
-- Virtuelle Umgebung (empfohlen)
-- Python Libraries:
+- Python 3.8 or higher
+- Virtual environment (recommended)
+- Python libraries:
   - `mido`
   - `python-rtmidi`
   - `numpy`
   - `openai`
 
 ### Setup
-1. Repository klonen oder Dateien herunterladen
-2. Projektverzeichnis öffnen:
+1. Clone the repository or download the project files
+2. Open the project directory:
    ```bash
    cd /path/to/AI-Sequencer-V1
    ```
-3. Virtuelle Umgebung erstellen und aktivieren:
+3. Create and activate a virtual environment:
    ```bash
    python3 -m venv venv
    source venv/bin/activate
    ```
-4. Libraries installieren:
+4. Install the libraries:
    ```bash
    pip install --upgrade pip
    pip install mido python-rtmidi numpy openai
    ```
 
-## MIDI-Geräte Setup
-1. MIDI-Interface oder virtuelles MIDI-Gerät aktivieren (z.B. IAC Driver auf macOS, LoopMIDI auf Windows)
-2. Zielgerät/MIDI-Software:
-   - 4x MIDI-Empfänger (Synthesizer, DAW, Modular, etc.) auf die gewünschten Kanäle stellen:
+## MIDI Device Setup
+1. Activate your MIDI interface or virtual MIDI device (e.g. IAC Driver on macOS, LoopMIDI on Windows)
+2. Target device/software:
+   - Set up 4 MIDI receivers (synths, DAW, modular, etc.) to the desired channels:
      - **Bass**: Channel 1
      - **Melody**: Channel 2
      - **Lead**: Channel 3
      - **Arp**: Channel 4
-   - Device: z.B. "IAC Driver Bus 1" oder anderes verfügbares MIDI-Out
-   - V/OCT und GATE verbinden (bei Modular)
-3. (Optional) Clock-Modul für Synchronisation
+   - Device: e.g. "IAC Driver Bus 1" or any available MIDI output
+   - Connect V/OCT and GATE (for modular)
+3. (Optional) Add a clock module for synchronization
 
-## Sequencer starten
-1. (Optional) OPENAI_API_KEY setzen:
+## Running the Sequencer
+1. (Optional) Set your OPENAI_API_KEY:
    ```bash
    export OPENAI_API_KEY=your_api_key_here
    ```
-2. Sequencer starten:
+2. Start the sequencer:
    ```bash
    python3 ai-sequencer.py --device <MIDI-Device-Name>
    ```
-3. Stoppen: `Ctrl+C`
+3. Stop: `Ctrl+C`
 
-## prompt.txt Beispiel
+## Example prompt.txt
 ```
 Slow, meditative ambient in E major. Minimal notes, maximum space. Long sustained tones with gentle evolution. Inspired by Stars of the Lid and Eluvium.
 
@@ -113,5 +113,5 @@ jitter_ms: 0
 clock_enable: true
 ```
 
-## Lizenz
+## License
 MIT License
