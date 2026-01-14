@@ -30,18 +30,36 @@ import os
 import json
 import sys
 import argparse
-from typing import List, Dict, Any
+import signal
+from typing import List, Dict, Any, Optional
+from contextlib import contextmanager
 
 import numpy as np
 import mido
 from mido import Message
 from openai import OpenAI
 
-api_key = os.getenv("OPENAI_API_KEY")
-if not api_key:
-    raise RuntimeError("OPENAI_API_KEY environment variable not set!")
+# Constants
+PPQN = 24  # Pulses per quarter note for MIDI clock
+MIN_GATE_TIME = 0.03  # Minimum gate time in seconds
+MAX_MOTIF_LENGTH = 6
+MIN_MOTIF_LENGTH = 2
+DEFAULT_BPM = 120
+DEFAULT_VELOCITY = 96
+VELOCITY_VARIATION = 10
 
-client = OpenAI(api_key=api_key)
+# Lazy initialization of OpenAI client
+_openai_client: Optional[OpenAI] = None
+
+def get_openai_client() -> OpenAI:
+    """Lazily initialize OpenAI client only when needed."""
+    global _openai_client
+    if _openai_client is None:
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise RuntimeError("OPENAI_API_KEY environment variable not set!")
+        _openai_client = OpenAI(api_key=api_key)
+    return _openai_client
 
 def load_config_from_prompt(prompt_path: str) -> Dict[str, Any]:
     """
@@ -103,10 +121,6 @@ def generate_config_from_prompt(prompt_path: str) -> Dict[str, Any]:
             print("[SequencerVCV] prompt.txt is empty, using default configuration.")
             return {}
 
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        raise RuntimeError("OPENAI_API_KEY environment variable not set!")
-
     system_msg = (
         "You are an AI music assistant for a generative MIDI sequencer. "
         "Generate a JSON object with musical parameters that create coherent and musical sequences. "
@@ -121,17 +135,23 @@ def generate_config_from_prompt(prompt_path: str) -> Dict[str, Any]:
     )
 
     try:
-        response = client.chat.completions.create(model="gpt-3.5-turbo",
-        messages=[
-            {"role": "system", "content": system_msg},
-            {"role": "user", "content": prompt},
-        ],
-        temperature=0.7,
-        max_tokens=800)
+        client = get_openai_client()
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": system_msg},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.7,
+            max_tokens=800
+        )
         content = response.choices[0].message.content
         return json.loads(content)
+    except json.JSONDecodeError as e:
+        print(f"[SequencerVCV] Error parsing AI JSON response: {e}")
+        return {}
     except Exception as e:
-        print("[SequencerVCV] Error parsing AI response:", e)
+        print(f"[SequencerVCV] Error communicating with OpenAI: {e}")
         return {}
 
 # Predefined motifs for more musical starting points
@@ -192,16 +212,24 @@ def chord_degrees(scale_name: str, root_degree: int, add_seventh: bool = True):
 # ---------------- Helper Functions ----------------
 
 def list_outputs() -> List[str]:
-    return mido.get_output_names()
+    """Returns a list of available MIDI output port names."""
+    try:
+        return mido.get_output_names()
+    except Exception as e:
+        print(f"[SequencerVCV] Error listing MIDI outputs: {e}")
+        return []
 
 
-def open_port(hint: str):
+def open_port(hint: str) -> mido.ports.BaseOutput:
+    """Opens a MIDI output port matching the hint string."""
     names = list_outputs()
     if not names:
-        raise RuntimeError("No MIDI Out found. IAC active?")
+        raise RuntimeError("No MIDI Out found. Is IAC Driver active?")
     for n in names:
         if hint.lower() in n.lower():
+            print(f"[SequencerVCV] Found matching port: {n}")
             return mido.open_output(n)
+    print(f"[SequencerVCV] No port matching '{hint}', using first available: {names[0]}")
     return mido.open_output(names[0])
 
 
@@ -232,41 +260,60 @@ def parse_root_note(root):
     return 57
 
 def scale_note(root: int, degree: int, scale_name: str) -> int:
+    """Convert a scale degree to a MIDI note number."""
     scale = SCALES.get(scale_name, SCALES["dorian"])  # Fallback dorian
     octave = degree // len(scale)
     idx = degree % len(scale)
     midi_root = parse_root_note(root)
     return midi_root + octave*12 + scale[idx]
 
+
+def clamp_midi_note(note: int) -> int:
+    """Clamp a MIDI note to the valid range 0-127, with octave wrapping."""
+    while note < 0:
+        note += 12
+    while note > 127:
+        note -= 12
+    return int(np.clip(note, 0, 127))
+
 # ---------------- State ----------------
 class LaneState:
+    """Represents the state of a single melodic lane (melody, bass, or lead)."""
+    
     def __init__(self, motif_degrees: List[int], max_register_shift: int):
         self.motif = motif_degrees.copy() if motif_degrees else DEFAULT_MOTIFS.get("melody", [0])
         self.register = 0
         self.rotation = 0
-        self.max_reg = max_register_shift
+        self.max_reg = max(1, max_register_shift)  # Ensure at least 1
 
-    def evolve(self):
+    def evolve(self) -> None:
+        """Evolve the motif through rotation, addition/removal, or register shift."""
         r = random.random()
-        if r < 0.45 and len(self.motif) > 1:
+        if r < 0.45 and len(self.motif) > MIN_MOTIF_LENGTH:
+            # Rotate motif
             self.rotation = (self.rotation + random.choice([1, -1])) % len(self.motif)
         elif r < 0.8:
-            if len(self.motif) < 6 and random.random() < 0.6:
+            # Add or remove note
+            if len(self.motif) < MAX_MOTIF_LENGTH and random.random() < 0.6:
                 anchor = random.choice(self.motif)
                 delta = random.choice([-2, -1, 1, 2])
                 self.motif.append(max(0, anchor + delta))
-            elif len(self.motif) > 2:
+            elif len(self.motif) > MIN_MOTIF_LENGTH:
                 self.motif.pop(random.randrange(len(self.motif)))
         else:
+            # Register shift
             self.register = int(np.clip(self.register + random.choice([-1, 1]), -self.max_reg, self.max_reg))
 
     def degrees_for_cycle(self) -> List[int]:
+        """Returns the current motif degrees arranged for a full cycle."""
         if not self.motif:
             self.motif = [0]
         m = self.motif[self.rotation:] + self.motif[:self.rotation]
-        return m + m
+        return m + m  # Double for longer phrases
 
 class GlobalState:
+    """Manages the state of all three melodic lanes."""
+    
     def __init__(self, cfg: Dict[str, Any]):
         self.cfg = cfg
         self.mel = LaneState(
@@ -283,53 +330,86 @@ class GlobalState:
         )
         self.iter = 0
 
+
+def get_scale_name(cfg: Dict[str, Any]) -> str:
+    """Helper to get scale name from config, handling mode/scale aliases."""
+    return cfg.get("mode", cfg.get("scale", "dorian"))
+
 # ---------------- Pattern Construction ----------------
 
-def build_lane(cfg: Dict[str, Any], lane: LaneState, role: str) -> List[Dict[str,int]]:
+def build_lane(cfg: Dict[str, Any], lane: LaneState, role: str) -> List[Dict[str, Any]]:
+    """Build a sequence of note events for a single lane."""
     steps_total = cfg.get("steps_per_bar", 16) * cfg.get("bars", 8)
     steps_per_bar = cfg.get("steps_per_bar", 16)
     degrees_cycle = lane.degrees_for_cycle()
+    scale_name = get_scale_name(cfg)
+    
+    # Handle chord_tone_bias as dict or float
     bias_map = cfg.get("chord_tone_bias", {})
     if not isinstance(bias_map, dict):
-        # If AI only provides a float, convert it
         bias_map = {"mel": bias_map, "bass": bias_map, "lead": bias_map}
 
-    if role == "mel":
-        Lmin, Lmax = cfg.get("mel_min_len_steps", 2), cfg.get("mel_max_len_steps", 16)
-        tie_bias, vel0 = cfg.get("mel_tie_bias", 0.7), cfg.get("melody_velocity", 96)
-        reg_off, ghost_prob = 0, cfg.get("mel_ghost_prob", 0.04)
-        gate_lo, gate_hi = cfg.get("mel_gate_var", (0.8, 1.0))
-        chord_bias = bias_map.get("mel", 0.7)
-    elif role == "bass":
-        Lmin, Lmax = cfg.get("bass_min_len_steps", 16), cfg.get("bass_max_len_steps", 64)
-        tie_bias, vel0 = cfg.get("bass_tie_bias", 0.95), cfg.get("bass_velocity", 100)
-        reg_off, ghost_prob = cfg.get("bass_register_offset_oct", -1) * 12, 0.0
-        gate_lo, gate_hi = cfg.get("bass_gate_var", (0.9, 1.0))
-        chord_bias = bias_map.get("bass", 1.0)
-    else:  # lead
-        Lmin, Lmax = cfg.get("lead_min_len_steps", 1), cfg.get("lead_max_len_steps", 8)
-        tie_bias, vel0 = cfg.get("lead_tie_bias", 0.45), cfg.get("lead_velocity", 92)
-        reg_off, ghost_prob = cfg.get("lead_register_offset_oct", 1) * 12, cfg.get("lead_ghost_prob", 0.02)
-        gate_lo, gate_hi = cfg.get("lead_gate_var", (0.4, 0.9))
-        chord_bias = bias_map.get("lead", 0.6)
+    # Lane-specific parameters with sensible defaults
+    lane_params = {
+        "mel": {
+            "Lmin": cfg.get("mel_min_len_steps", 2),
+            "Lmax": cfg.get("mel_max_len_steps", 16),
+            "tie_bias": cfg.get("mel_tie_bias", 0.7),
+            "vel0": cfg.get("melody_velocity", DEFAULT_VELOCITY),
+            "reg_off": 0,
+            "ghost_prob": cfg.get("mel_ghost_prob", 0.04),
+            "gate_var": cfg.get("mel_gate_var", (0.8, 1.0)),
+            "chord_bias": bias_map.get("mel", 0.7),
+        },
+        "bass": {
+            "Lmin": cfg.get("bass_min_len_steps", 16),
+            "Lmax": cfg.get("bass_max_len_steps", 64),
+            "tie_bias": cfg.get("bass_tie_bias", 0.95),
+            "vel0": cfg.get("bass_velocity", 100),
+            "reg_off": cfg.get("bass_register_offset_oct", -1) * 12,
+            "ghost_prob": 0.0,
+            "gate_var": cfg.get("bass_gate_var", (0.9, 1.0)),
+            "chord_bias": bias_map.get("bass", 1.0),
+        },
+        "lead": {
+            "Lmin": cfg.get("lead_min_len_steps", 1),
+            "Lmax": cfg.get("lead_max_len_steps", 8),
+            "tie_bias": cfg.get("lead_tie_bias", 0.45),
+            "vel0": cfg.get("lead_velocity", 92),
+            "reg_off": cfg.get("lead_register_offset_oct", 1) * 12,
+            "ghost_prob": cfg.get("lead_ghost_prob", 0.02),
+            "gate_var": cfg.get("lead_gate_var", (0.4, 0.9)),
+            "chord_bias": bias_map.get("lead", 0.6),
+        },
+    }
+    
+    params = lane_params.get(role, lane_params["mel"])
+    Lmin, Lmax = params["Lmin"], params["Lmax"]
+    tie_bias, vel0 = params["tie_bias"], params["vel0"]
+    reg_off, ghost_prob = params["reg_off"], params["ghost_prob"]
+    gate_lo, gate_hi = params["gate_var"]
+    chord_bias = params["chord_bias"]
 
-    events: List[Dict[str, int]] = []
+    events: List[Dict[str, Any]] = []
     step_cursor = 0
-    Lscale = scale_len(cfg.get("mode", cfg.get("scale", "dorian")))
+    Lscale = scale_len(scale_name)
 
     while step_cursor < steps_total:
         bar_idx = step_cursor // steps_per_bar
+        
+        # Determine chord tones for current position
         if cfg.get("harmony_enable", True):
-            block = cfg.get("chord_change_every_bars", 2)
+            block = max(1, cfg.get("chord_change_every_bars", 2))
             prog = cfg.get("progression_degrees", [0, 5, 3, 4])
-            chord_deg = prog[(bar_idx // max(1, block)) % len(prog)]
-            chord_tones = chord_degrees(cfg.get("mode", cfg.get("scale", "dorian")), chord_deg, add_seventh=True)
+            chord_deg = prog[(bar_idx // block) % len(prog)]
+            chord_tones = chord_degrees(scale_name, chord_deg, add_seventh=True)
         else:
             chord_tones = []
 
+        # Select degree based on chord bias
         if chord_tones and random.random() < chord_bias:
             if role == "bass":
-                base_choice = random.choice([0, 4])
+                base_choice = random.choice([0, 4])  # Root or fifth
                 deg = (chord_deg + base_choice) % Lscale
             else:
                 deg = random.choice(chord_tones)
@@ -337,23 +417,43 @@ def build_lane(cfg: Dict[str, Any], lane: LaneState, role: str) -> List[Dict[str
             deg = random.choice(degrees_cycle)
 
         deg += lane.register * Lscale
-        note = scale_note(cfg.get("root", 57), deg, cfg.get("mode", cfg.get("scale", "dorian"))) + reg_off
+        note = scale_note(cfg.get("root", 57), deg, scale_name) + reg_off
+        note = clamp_midi_note(note)  # Ensure valid MIDI range
 
+        # Calculate note length - ensure valid range for randint
+        Lmin_eff = max(1, Lmin)
+        Lmax_eff = max(Lmin_eff + 1, Lmax)  # Ensure Lmax > Lmin
+        
         if random.random() < tie_bias:
-            length = random.randint(max(Lmin, 2), Lmax)
+            length = random.randint(Lmin_eff, Lmax_eff)
         else:
-            length = random.randint(Lmin, max(Lmin + 1, int(Lmax * 0.5)))
+            length = random.randint(Lmin_eff, max(Lmin_eff + 1, int(Lmax_eff * 0.5)))
         length = int(np.clip(length, 1, steps_total - step_cursor))
 
-        vel = int(np.clip(vel0 + random.randint(-10, 10), 1, 127))  # Add velocity variation
+        # Add velocity variation
+        vel = int(np.clip(vel0 + random.randint(-VELOCITY_VARIATION, VELOCITY_VARIATION), 1, 127))
         gate = float(random.uniform(gate_lo, gate_hi))
-        events.append({"step": step_cursor, "note": note, "len": length, "vel": vel, "gate": gate})
+        
+        events.append({
+            "step": step_cursor,
+            "note": note,
+            "len": length,
+            "vel": vel,
+            "gate": gate
+        })
 
+        # Add ghost notes for texture
         if ghost_prob > 0 and random.random() < ghost_prob and step_cursor > 0:
             ghost_len = max(1, length // 4)
             ghost_vel = max(1, int(vel * 0.55))
             ghost_gate = max(0.2, gate * 0.6)
-            events.append({"step": max(0, step_cursor - 1), "note": note, "len": ghost_len, "vel": ghost_vel, "gate": ghost_gate})
+            events.append({
+                "step": max(0, step_cursor - 1),
+                "note": note,
+                "len": ghost_len,
+                "vel": ghost_vel,
+                "gate": ghost_gate
+            })
 
         step_cursor += length
 
@@ -373,43 +473,124 @@ def build_pattern(cfg: Dict[str, Any], st: GlobalState) -> Dict[str, Any]:
 
 # ---------------- Clock Thread ----------------
 class MidiClock:
-    def __init__(self, port, cfg):
+    """MIDI clock generator running in a separate high-priority thread."""
+    
+    def __init__(self, port: mido.ports.BaseOutput, cfg: Dict[str, Any]):
         self.port = port
         self.cfg = cfg
         self.running = False
-        self.thread = None
+        self.thread: Optional[threading.Thread] = None
 
-    def start(self):
+    def start(self) -> None:
+        """Start the MIDI clock if enabled in config."""
         if self.cfg.get("clock_enable", True) and not self.running:
             self.running = True
-            self.port.send(Message('start'))  # 0xFA
+            try:
+                self.port.send(Message('start'))  # 0xFA
+            except Exception as e:
+                print(f"[MidiClock] Error sending start: {e}")
             self.thread = threading.Thread(target=self._run, daemon=True)
             self.thread.start()
 
-    def stop(self):
-        if self.running:
-            self.running = False
-            if self.thread:
-                self.thread.join()
-            self.port.send(Message('stop'))   # 0xFC
+    def stop(self) -> None:
+        """Stop the MIDI clock."""
+        if not self.running:
+            return
+        self.running = False
+        if self.thread:
+            self.thread.join(timeout=1.0)
+        try:
+            self.port.send(Message('stop'))  # 0xFC
+        except Exception as e:
+            print(f"[MidiClock] Error sending stop: {e}")
 
-    def _run(self):
-        bpm = self.cfg.get("bpm", 120)  # Default to 120 BPM if missing
-        interval = (60.0 / bpm) / 24.0  # 24 PPQN
+    def _run(self) -> None:
+        """Clock thread main loop - optimized for stability."""
+        bpm = self.cfg.get("bpm", DEFAULT_BPM)
+        interval = (60.0 / bpm) / PPQN  # Time between clock ticks
+        
+        # Use perf_counter for high resolution
+        next_tick = time.perf_counter()
+        
         while self.running:
-            self.port.send(Message('clock'))  # 0xF8
-            time.sleep(interval)
+            try:
+                self.port.send(Message('clock'))  # 0xF8
+            except Exception:
+                break
+            
+            # Schedule next tick (absolute time to prevent drift)
+            next_tick += interval
+            
+            # Calculate how long to sleep
+            sleep_time = next_tick - time.perf_counter()
+            
+            if sleep_time > 0:
+                time.sleep(sleep_time)
+            elif sleep_time < -0.1:
+                # We're way behind (>100ms), reset
+                next_tick = time.perf_counter()
 
 # ---------------- Playback ----------------
 
-def play_pattern(port, cfg: Dict[str, Any], patt: Dict[str, Any]):
-    bpm = cfg.get("bpm", 120)  # Default to 120 BPM if missing
+class NoteTracker:
+    """Tracks active notes to ensure proper note-off on shutdown."""
+    
+    def __init__(self):
+        self.active_notes: Dict[int, set] = {}  # channel -> set of notes
+        self._lock = threading.Lock()
+    
+    def note_on(self, channel: int, note: int) -> None:
+        with self._lock:
+            if channel not in self.active_notes:
+                self.active_notes[channel] = set()
+            self.active_notes[channel].add(note)
+    
+    def note_off(self, channel: int, note: int) -> None:
+        with self._lock:
+            if channel in self.active_notes:
+                self.active_notes[channel].discard(note)
+    
+    def get_all_active(self) -> List[tuple]:
+        """Returns list of (channel, note) tuples for all active notes."""
+        with self._lock:
+            result = []
+            for ch, notes in self.active_notes.items():
+                for note in notes:
+                    result.append((ch, note))
+            return result
+
+
+# Global note tracker for cleanup
+_note_tracker = NoteTracker()
+
+# Global shutdown event for clean termination
+_shutdown_event = threading.Event()
+
+
+def interruptible_sleep(duration: float) -> bool:
+    """Sleep that can be interrupted by shutdown event.
+    
+    Returns True if sleep completed normally, False if interrupted.
+    """
+    if duration <= 0:
+        return True
+    # Use Event.wait() which can be interrupted
+    return not _shutdown_event.wait(timeout=duration)
+
+
+def play_pattern(port: mido.ports.BaseOutput, cfg: Dict[str, Any], patt: Dict[str, Any]) -> bool:
+    """Play a complete pattern through the MIDI port.
+    
+    Returns True if completed normally, False if interrupted by shutdown.
+    """
+    bpm = cfg.get("bpm", DEFAULT_BPM)
     step_dur = (60.0 / bpm) / 4.0  # 16th notes
     total_steps = cfg.get("steps_per_bar", 16) * cfg.get("bars", 8)
     swing = float(cfg.get("swing", 0.0))
     jitter = cfg.get("jitter_ms", 0) / 1000.0
 
-    schedules = {name: [[] for _ in range(total_steps)] for name in ("melody","bass","lead")}
+    # Pre-schedule all events by step
+    schedules = {name: [[] for _ in range(total_steps)] for name in ("melody", "bass", "lead")}
     for name in schedules.keys():
         for ev in patt["pattern"][name]:
             s = ev["step"] % total_steps
@@ -422,10 +603,18 @@ def play_pattern(port, cfg: Dict[str, Any], patt: Dict[str, Any]):
     }
 
     for s in range(total_steps):
+        # Check for shutdown at the start of each step
+        if _shutdown_event.is_set():
+            return False
+            
         step_start = time.time()
         step_offset = swing * step_dur if (s % 2 == 1) else 0.0
 
-        for name in ("melody","bass","lead"):
+        for name in ("melody", "bass", "lead"):
+            if _shutdown_event.is_set():
+                return False
+                
+            channel = ch_map[name]
             for ev in schedules[name][s]:
                 note = int(ev["note"])
                 vel = int(ev["vel"])
@@ -437,63 +626,166 @@ def play_pattern(port, cfg: Dict[str, Any], patt: Dict[str, Any]):
                 delay0 = max(0.0, step_offset + micro)
 
                 now = time.time()
-                wait = (delay0) - (now - step_start)
+                wait = delay0 - (now - step_start)
                 if wait > 0:
-                    time.sleep(wait)
+                    if not interruptible_sleep(wait):
+                        return False
 
-                port.send(Message('note_on', channel=ch_map[name], note=note, velocity=vel))
-                gate_time = max(0.03, dur * gate_frac)
-                time.sleep(gate_time)
-                port.send(Message('note_off', channel=ch_map[name], note=note, velocity=0))
+                try:
+                    port.send(Message('note_on', channel=channel, note=note, velocity=vel))
+                    _note_tracker.note_on(channel, note)
+                    
+                    gate_time = max(MIN_GATE_TIME, dur * gate_frac)
+                    if not interruptible_sleep(gate_time):
+                        # Send note off before returning on shutdown
+                        port.send(Message('note_off', channel=channel, note=note, velocity=0))
+                        _note_tracker.note_off(channel, note)
+                        return False
+                    
+                    port.send(Message('note_off', channel=channel, note=note, velocity=0))
+                    _note_tracker.note_off(channel, note)
+                except Exception as e:
+                    print(f"[Playback] MIDI error: {e}")
 
         elapsed = time.time() - step_start
         rem = step_dur - elapsed
         if rem > 0:
-            time.sleep(rem)
+            if not interruptible_sleep(rem):
+                return False
+    
+    return True
 
 # ---------------- Runtime Logic ----------------
 
-def all_notes_off(port, cfg: Dict[str, Any]):
+def all_notes_off(port: mido.ports.BaseOutput, cfg: Dict[str, Any]) -> None:
     """
-    Sends Note-Off for all notes on all used channels and a MIDI reset.
+    Sends Note-Off for all tracked active notes and performs MIDI panic.
     """
+    # First, turn off any tracked active notes
+    for channel, note in _note_tracker.get_all_active():
+        try:
+            port.send(Message('note_off', channel=channel, note=note, velocity=0))
+        except Exception:
+            pass
+    
+    # Then do a full panic on all used channels
     channels = [
         cfg["melody_channel"] - 1,
         cfg["bass_channel"] - 1,
         cfg["lead_channel"] - 1,
     ]
-    # Turn off all notes in the range 0-127
-    for ch in channels:
-        for note in range(128):
-            port.send(Message('note_off', channel=ch, note=note, velocity=0))
-    # Send MIDI reset (General MIDI Reset: 0xFF is System Reset, but not all devices support this)
-    port.send(Message('reset'))  # 0xFF
+    
+    for ch in set(channels):  # Use set to avoid duplicates
+        try:
+            # All Notes Off CC
+            port.send(Message('control_change', channel=ch, control=123, value=0))
+            # All Sound Off CC
+            port.send(Message('control_change', channel=ch, control=120, value=0))
+        except Exception as e:
+            print(f"[Cleanup] Error sending CC on channel {ch}: {e}")
+    
+    try:
+        port.send(Message('reset'))  # System reset
+    except Exception:
+        pass  # Not all devices support this
 
 
-def print_sequence_parameters(cfg: Dict[str, Any]):
-    """
-    Prints the main musical parameters from the configuration.
-    """
-    # Use mode if available, otherwise scale
-    mode = cfg.get("mode", None)
-    scales = mode if mode else cfg.get("scale", "minor")
+def validate_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
+    """Validate and sanitize configuration values."""
+    validated = cfg.copy()
+    
+    # Ensure BPM is reasonable
+    if "bpm" in validated:
+        validated["bpm"] = max(20, min(300, int(validated["bpm"])))
+    else:
+        validated["bpm"] = DEFAULT_BPM
+    
+    # Ensure bars is positive
+    if "bars" in validated:
+        validated["bars"] = max(1, int(validated["bars"]))
+    else:
+        validated["bars"] = 8
+    
+    # Ensure steps_per_bar is reasonable
+    if "steps_per_bar" in validated:
+        validated["steps_per_bar"] = max(4, min(64, int(validated["steps_per_bar"])))
+    else:
+        validated["steps_per_bar"] = 16
+    
+    # Validate and fix root note - ensure it's a proper MIDI base note
+    root = validated.get("root", "A3")
+    midi_root = parse_root_note(root)
+    # If root is unreasonably low (like 2 for "D"), assume it's a note name and set proper octave
+    if isinstance(root, int) and root < 12:
+        # AI probably meant a note number within an octave, map to reasonable range
+        validated["root"] = 48 + root  # C3 + offset
+        print(f"[Config] Root note {root} too low, adjusted to MIDI {validated['root']}")
+    elif midi_root < 24:  # Below C1
+        validated["root"] = 57  # Default A3
+        print(f"[Config] Root note too low, defaulting to A3 (MIDI 57)")
+    
+    # Validate scale name (case-insensitive, handle compound names like "C major")
+    scale = validated.get("scale", validated.get("mode"))
+    if scale:
+        # Extract just the scale/mode name (remove root note if AI included it)
+        # e.g. "C major" -> "major", "D minor" -> "minor", "dorian" -> "dorian"
+        scale_parts = scale.lower().split()
+        scale_name = scale_parts[-1] if scale_parts else "dorian"  # Take last word
+        
+        if scale_name not in SCALES:
+            print(f"[Config] Unknown scale '{scale}', defaulting to 'dorian'")
+            validated["scale"] = "dorian"
+        else:
+            validated["scale"] = scale_name  # Normalize to just the scale name
+    
+    # Validate register offsets - limit to reasonable octave range
+    for key in ["bass_register_offset_oct", "lead_register_offset_oct"]:
+        if key in validated:
+            validated[key] = max(-2, min(2, int(validated[key])))
+    
+    # Validate max_register_shift values
+    for key in ["mel_max_register_shift", "bass_max_register_shift", "lead_max_register_shift"]:
+        if key in validated:
+            validated[key] = max(1, min(3, int(validated[key])))  # Limit to 3 octaves
+    
+    return validated
+
+
+def print_sequence_parameters(cfg: Dict[str, Any]) -> None:
+    """Prints the main musical parameters from the configuration."""
+    scale = get_scale_name(cfg)
     bars = cfg.get("bars", 8)
-    tempo = cfg.get("bpm", 70)
-    root = cfg.get("root", "C")
-    print(f"[Sequencer] Mode/Scale: {scales}")
-    print(f"[Sequencer] Number of Bars: {bars}")
-    print(f"[Sequencer] Tempo (BPM): {tempo}")
-    print(f"[Sequencer] Root Key: {root}")
+    tempo = cfg.get("bpm", DEFAULT_BPM)
+    root = cfg.get("root", "A")
+    
+    print("=" * 50)
+    print("[Sequencer] Musical Parameters:")
+    print(f"  • Scale/Mode: {scale}")
+    print(f"  • Root Note:  {root}")
+    print(f"  • Tempo:      {tempo} BPM")
+    print(f"  • Bars:       {bars}")
+    print("=" * 50)
 
 def main():
-    parser = argparse.ArgumentParser(description="AI Sequencer")
+    parser = argparse.ArgumentParser(description="AI Sequencer - Generative MIDI Sequencer")
     parser.add_argument("--device", type=str, help="MIDI device name hint (e.g. 'OXI', 'IAC', 'Arturia')")
+    parser.add_argument("--prompt", type=str, default="prompt.txt", help="Path to prompt file")
+    parser.add_argument("--no-ai", action="store_true", help="Skip AI generation, use prompt.txt as config")
     args = parser.parse_args()
 
-    print("[SequencerVCV] Generating composition parameters from prompt.txt using AI …")
-    user_cfg = generate_config_from_prompt("prompt.txt")
+    print("[SequencerVCV] AI Sequencer V1 starting...")
+    
+    # Load configuration
+    if args.no_ai:
+        print("[SequencerVCV] Loading configuration from prompt.txt (no AI)...")
+        user_cfg = load_config_from_prompt(args.prompt)
+    else:
+        print("[SequencerVCV] Generating composition parameters from prompt.txt using AI...")
+        user_cfg = generate_config_from_prompt(args.prompt)
+    
     CONFIG = DEFAULT_CONFIG.copy()
     CONFIG.update(user_cfg)
+    CONFIG = validate_config(CONFIG)
 
     # Ensure channel mapping: 1 = Bass, 2 = Melody, 3 = Lead
     CONFIG["bass_channel"] = 1
@@ -505,23 +797,37 @@ def main():
         CONFIG["device"] = args.device
 
     # Display available devices
-    print("[SequencerVCV] Available MIDI Out devices:")
-    for idx, name in enumerate(list_outputs()):
+    print("\n[SequencerVCV] Available MIDI Out devices:")
+    outputs = list_outputs()
+    if not outputs:
+        print("  No MIDI devices found!")
+        print("  Please enable IAC Driver or connect a MIDI device.")
+        sys.exit(1)
+    
+    for idx, name in enumerate(outputs):
         print(f"  [{idx}] {name}")
+    
     # Optional: Device selection via input, only if no parameter is set
     if not args.device:
-        user_hint = input("Device name (Enter for default/IAC): ").strip()
+        user_hint = input("\nDevice name (Enter for default/IAC): ").strip()
         if user_hint:
             CONFIG["device"] = user_hint
         else:
             CONFIG["device"] = "IAC"
 
-    print(f"[SequencerVCV] Active configuration: {CONFIG}")
+    print(f"\n[SequencerVCV] Active configuration:")
+    for key, value in sorted(CONFIG.items()):
+        print(f"  {key}: {value}")
 
     print_sequence_parameters(CONFIG)
 
-    print("[SequencerVCV] Opening MIDI Out …")
-    out = open_port(CONFIG["device"])
+    print("\n[SequencerVCV] Opening MIDI Out...")
+    try:
+        out = open_port(CONFIG["device"])
+    except RuntimeError as e:
+        print(f"[SequencerVCV] Error: {e}")
+        sys.exit(1)
+    
     print(f"[SequencerVCV] Sending to: {out.name}")
 
     clock = MidiClock(out, CONFIG)
@@ -533,22 +839,46 @@ def main():
     lead_evo = int(CONFIG.get("lead_evolve_every_bars", 12))
     bars_passed = 0
 
+    # Setup signal handler for graceful shutdown using global event
+    def signal_handler(signum, frame):
+        print("\n[SequencerVCV] Shutdown signal received, stopping...")
+        _shutdown_event.set()
+    
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+
+    print("\n[SequencerVCV] Playing... (Press Ctrl+C to stop)")
+    
     try:
-        while True:
+        while not _shutdown_event.is_set():
             patt = build_pattern(CONFIG, st)
-            play_pattern(out, CONFIG, patt)
+            if not play_pattern(out, CONFIG, patt):
+                break  # Interrupted by shutdown
+            
+            if _shutdown_event.is_set():
+                break
+                
             bars_passed += CONFIG.get("bars", 8)
+            
+            # Evolve lanes based on configuration
             if mel_evo > 0 and (bars_passed % mel_evo == 0):
                 st.mel.evolve()
+                print(f"[Evolution] Melody evolved at bar {bars_passed}")
             if bass_evo > 0 and (bars_passed % bass_evo == 0):
                 st.bass.evolve()
+                print(f"[Evolution] Bass evolved at bar {bars_passed}")
             if lead_evo > 0 and (bars_passed % lead_evo == 0):
                 st.lead.evolve()
-    except KeyboardInterrupt:
-        print("[SequencerVCV] Stopping …")
+                print(f"[Evolution] Lead evolved at bar {bars_passed}")
+    except Exception as e:
+        print(f"[SequencerVCV] Error during playback: {e}")
     finally:
+        print("[SequencerVCV] Cleaning up...")
         clock.stop()
         all_notes_off(out, CONFIG)
+        out.close()
+        print("[SequencerVCV] Stopped.")
+
 
 if __name__ == "__main__":
     main()
