@@ -130,6 +130,7 @@ def generate_config_from_prompt(prompt_path: str) -> Dict[str, Any]:
         "mel_base_motif_degrees, mel_max_register_shift, mel_evolve_every_bars, mel_tie_bias, mel_min_len_steps, mel_max_len_steps, mel_ghost_prob, "
         "bass_base_motif_degrees, bass_register_offset_oct, bass_max_register_shift, bass_evolve_every_bars, bass_tie_bias, bass_min_len_steps, bass_max_len_steps, "
         "lead_base_motif_degrees, lead_register_offset_oct, lead_max_register_shift, lead_evolve_every_bars, lead_tie_bias, lead_min_len_steps, lead_max_len_steps, "
+        "arp_base_motif_degrees, arp_register_offset_oct, arp_max_register_shift, arp_evolve_every_bars, arp_tie_bias, arp_min_len_steps, arp_max_len_steps, "
         "chord_tone_bias, harmony_enable, clock_enable, swing, jitter_ms. "
         "Respond only with the JSON object, no explanations."
     )
@@ -159,6 +160,7 @@ DEFAULT_MOTIFS = {
     "melody": [0, 2, 4, 5],
     "bass": [0, -2, -4],
     "lead": [7, 9, 12],
+    "arp": [0, 2, 4, 7, 9, 12],  # Arpeggio pattern
 }
 
 # ---------------- Configuration ----------------
@@ -167,6 +169,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "melody_channel": 1,
     "bass_channel": 2,
     "lead_channel": 3,
+    "arp_channel": 4,
     "device": "IAC",  # Renamed from midi_port_hint
     "clock_enable": True,
 }
@@ -197,15 +200,15 @@ def scale_len(scale_name: str) -> int:
     # Consider "mode" as an alias for "scale"
     return len(SCALES.get(scale_name, SCALES["dorian"]))
 
-def chord_degrees(scale_name: str, root_degree: int, add_seventh: bool = True):
+def chord_degrees(scale_name: str, root_degree: int, chord_type: str = "7"):
     """
-    Returns chord-tone degrees (within the scale) for a diatonic triad/7th chord
-    built on 'root_degree'. Operates in scale-steps, not semitones.
+    Returns chord-tone degrees (within the scale) for a chord built on 'root_degree'.
+    chord_type: "triad", "7", "maj7", "min7", etc.
     """
     L = scale_len(scale_name)
     degrees = [ (root_degree + o) % L for o in (0, 2, 4) ]  # triad: 1-3-5
-    if add_seventh:
-        degrees.append((root_degree + 6) % L)              # add 7th: 1-3-5-7
+    if chord_type in ("7", "dom7", "dominant7", "maj7", "min7"):
+        degrees.append((root_degree + 6) % L)  # 7th: 1-3-5-7
     return degrees
 
 
@@ -312,7 +315,7 @@ class LaneState:
         return m + m  # Double for longer phrases
 
 class GlobalState:
-    """Manages the state of all three melodic lanes."""
+    """Manages the state of all four melodic lanes."""
     
     def __init__(self, cfg: Dict[str, Any]):
         self.cfg = cfg
@@ -327,6 +330,10 @@ class GlobalState:
         self.lead = LaneState(
             cfg.get("lead_base_motif_degrees", DEFAULT_MOTIFS["lead"]),
             cfg.get("lead_max_register_shift", 1)
+        )
+        self.arp = LaneState(
+            cfg.get("arp_base_motif_degrees", DEFAULT_MOTIFS["arp"]),
+            cfg.get("arp_max_register_shift", 2)
         )
         self.iter = 0
 
@@ -381,6 +388,16 @@ def build_lane(cfg: Dict[str, Any], lane: LaneState, role: str) -> List[Dict[str
             "gate_var": cfg.get("lead_gate_var", (0.4, 0.9)),
             "chord_bias": bias_map.get("lead", 0.6),
         },
+        "arp": {
+            "Lmin": cfg.get("arp_min_len_steps", 1),
+            "Lmax": cfg.get("arp_max_len_steps", 2),
+            "tie_bias": cfg.get("arp_tie_bias", 0.1),  # Short, staccato
+            "vel0": cfg.get("arp_velocity", 85),
+            "reg_off": cfg.get("arp_register_offset_oct", 0) * 12,
+            "ghost_prob": cfg.get("arp_ghost_prob", 0.05),
+            "gate_var": cfg.get("arp_gate_var", (0.3, 0.6)),  # Short gates
+            "chord_bias": bias_map.get("arp", 0.9),  # Strongly chord-based
+        },
     }
     
     params = lane_params.get(role, lane_params["mel"])
@@ -402,7 +419,8 @@ def build_lane(cfg: Dict[str, Any], lane: LaneState, role: str) -> List[Dict[str
             block = max(1, cfg.get("chord_change_every_bars", 2))
             prog = cfg.get("progression_degrees", [0, 5, 3, 4])
             chord_deg = prog[(bar_idx // block) % len(prog)]
-            chord_tones = chord_degrees(scale_name, chord_deg, add_seventh=True)
+            chord_type = cfg.get("chord_type", "7")
+            chord_tones = chord_degrees(scale_name, chord_deg, chord_type=chord_type)
         else:
             chord_tones = []
 
@@ -467,6 +485,7 @@ def build_pattern(cfg: Dict[str, Any], st: GlobalState) -> Dict[str, Any]:
             "melody": build_lane(cfg, st.mel, "mel"),
             "bass": build_lane(cfg, st.bass, "bass"),
             "lead": build_lane(cfg, st.lead, "lead"),
+            "arp": build_lane(cfg, st.arp, "arp"),
         }
     }
     return patt
@@ -581,6 +600,7 @@ def interruptible_sleep(duration: float) -> bool:
 def play_pattern(port: mido.ports.BaseOutput, cfg: Dict[str, Any], patt: Dict[str, Any]) -> bool:
     """Play a complete pattern through the MIDI port.
     
+    All channels play simultaneously using scheduled note-offs.
     Returns True if completed normally, False if interrupted by shutdown.
     """
     bpm = cfg.get("bpm", DEFAULT_BPM)
@@ -590,7 +610,7 @@ def play_pattern(port: mido.ports.BaseOutput, cfg: Dict[str, Any], patt: Dict[st
     jitter = cfg.get("jitter_ms", 0) / 1000.0
 
     # Pre-schedule all events by step
-    schedules = {name: [[] for _ in range(total_steps)] for name in ("melody", "bass", "lead")}
+    schedules = {name: [[] for _ in range(total_steps)] for name in ("melody", "bass", "lead", "arp")}
     for name in schedules.keys():
         for ev in patt["pattern"][name]:
             s = ev["step"] % total_steps
@@ -600,7 +620,11 @@ def play_pattern(port: mido.ports.BaseOutput, cfg: Dict[str, Any], patt: Dict[st
         "melody": cfg["melody_channel"] - 1,
         "bass": cfg["bass_channel"] - 1,
         "lead": cfg["lead_channel"] - 1,
+        "arp": cfg["arp_channel"] - 1,
     }
+
+    # Pending note-offs: list of (time_to_send, channel, note)
+    pending_offs: List[tuple] = []
 
     for s in range(total_steps):
         # Check for shutdown at the start of each step
@@ -610,10 +634,22 @@ def play_pattern(port: mido.ports.BaseOutput, cfg: Dict[str, Any], patt: Dict[st
         step_start = time.time()
         step_offset = swing * step_dur if (s % 2 == 1) else 0.0
 
-        for name in ("melody", "bass", "lead"):
-            if _shutdown_event.is_set():
-                return False
-                
+        # Process any pending note-offs that are due
+        now = time.time()
+        still_pending = []
+        for off_time, ch, n in pending_offs:
+            if now >= off_time:
+                try:
+                    port.send(Message('note_off', channel=ch, note=n, velocity=0))
+                    _note_tracker.note_off(ch, n)
+                except Exception:
+                    pass
+            else:
+                still_pending.append((off_time, ch, n))
+        pending_offs = still_pending
+
+        # Send all note-ons for this step (all channels simultaneously)
+        for name in ("melody", "bass", "lead", "arp"):
             channel = ch_map[name]
             for ev in schedules[name][s]:
                 note = int(ev["note"])
@@ -622,36 +658,44 @@ def play_pattern(port: mido.ports.BaseOutput, cfg: Dict[str, Any], patt: Dict[st
                 gate_frac = float(ev.get("gate", 0.95))
 
                 dur = step_dur * length_steps
+                gate_time = max(MIN_GATE_TIME, dur * gate_frac)
                 micro = random.uniform(-jitter, jitter)
-                delay0 = max(0.0, step_offset + micro)
-
-                now = time.time()
-                wait = delay0 - (now - step_start)
-                if wait > 0:
-                    if not interruptible_sleep(wait):
-                        return False
 
                 try:
                     port.send(Message('note_on', channel=channel, note=note, velocity=vel))
                     _note_tracker.note_on(channel, note)
                     
-                    gate_time = max(MIN_GATE_TIME, dur * gate_frac)
-                    if not interruptible_sleep(gate_time):
-                        # Send note off before returning on shutdown
-                        port.send(Message('note_off', channel=channel, note=note, velocity=0))
-                        _note_tracker.note_off(channel, note)
-                        return False
-                    
-                    port.send(Message('note_off', channel=channel, note=note, velocity=0))
-                    _note_tracker.note_off(channel, note)
+                    # Schedule note-off for later
+                    off_time = time.time() + gate_time + micro
+                    pending_offs.append((off_time, channel, note))
                 except Exception as e:
                     print(f"[Playback] MIDI error: {e}")
 
+        # Wait for the step duration
         elapsed = time.time() - step_start
         rem = step_dur - elapsed
         if rem > 0:
             if not interruptible_sleep(rem):
+                # Shutdown requested - send all pending note-offs
+                for _, ch, n in pending_offs:
+                    try:
+                        port.send(Message('note_off', channel=ch, note=n, velocity=0))
+                        _note_tracker.note_off(ch, n)
+                    except Exception:
+                        pass
                 return False
+
+    # Send any remaining note-offs at the end
+    for off_time, ch, n in pending_offs:
+        remaining_wait = off_time - time.time()
+        if remaining_wait > 0:
+            if not interruptible_sleep(remaining_wait):
+                break
+        try:
+            port.send(Message('note_off', channel=ch, note=n, velocity=0))
+            _note_tracker.note_off(ch, n)
+        except Exception:
+            pass
     
     return True
 
@@ -673,6 +717,7 @@ def all_notes_off(port: mido.ports.BaseOutput, cfg: Dict[str, Any]) -> None:
         cfg["melody_channel"] - 1,
         cfg["bass_channel"] - 1,
         cfg["lead_channel"] - 1,
+        cfg["arp_channel"] - 1,
     ]
     
     for ch in set(channels):  # Use set to avoid duplicates
@@ -837,6 +882,7 @@ def main():
     mel_evo = int(CONFIG.get("mel_evolve_every_bars", 8))
     bass_evo = int(CONFIG.get("bass_evolve_every_bars", 16))
     lead_evo = int(CONFIG.get("lead_evolve_every_bars", 12))
+    arp_evo = int(CONFIG.get("arp_evolve_every_bars", 4))  # Arps evolve faster
     bars_passed = 0
 
     # Setup signal handler for graceful shutdown using global event
@@ -870,6 +916,9 @@ def main():
             if lead_evo > 0 and (bars_passed % lead_evo == 0):
                 st.lead.evolve()
                 print(f"[Evolution] Lead evolved at bar {bars_passed}")
+            if arp_evo > 0 and (bars_passed % arp_evo == 0):
+                st.arp.evolve()
+                print(f"[Evolution] Arp evolved at bar {bars_passed}")
     except Exception as e:
         print(f"[SequencerVCV] Error during playback: {e}")
     finally:
