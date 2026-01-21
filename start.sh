@@ -38,15 +38,15 @@ show_menu() {
 
 # Get prompt
 get_prompt() {
-    echo -e "${YELLOW}Describe your music:${NC}"
-    echo -e "${BLUE}(e.g. 'Dark ambient, E minor, slowly ascending')${NC}"
+    echo -e "${YELLOW}Describe your music:${NC}" >&2
+    echo -e "${BLUE}(e.g. 'Dark ambient, E minor, slowly ascending')${NC}" >&2
     read -r -p "> " PROMPT_TEXT
     echo "$PROMPT_TEXT"
 }
 
 # Get bars
 get_bars() {
-    echo -e "${YELLOW}Number of bars [default: 16]:${NC}"
+    echo -e "${YELLOW}Number of bars [default: 16]:${NC}" >&2
     read -r -p "> " BARS
     if [ -z "$BARS" ]; then
         BARS=16
@@ -56,10 +56,10 @@ get_bars() {
 
 # Select MIDI device
 select_device() {
-    echo -e "${YELLOW}Available MIDI devices:${NC}"
-    "$VENV_PYTHON" "$SEQUENCER" --list-devices 2>/dev/null
-    echo ""
-    echo -e "${YELLOW}Enter MIDI device name [default: IAC]:${NC}"
+    echo -e "${YELLOW}Available MIDI devices:${NC}" >&2
+    "$VENV_PYTHON" "$SEQUENCER" --list-devices >&2 2>&1
+    echo "" >&2
+    echo -e "${YELLOW}Enter MIDI device name [default: IAC]:${NC}" >&2
     read -r -p "> " DEVICE
     if [ -z "$DEVICE" ]; then
         DEVICE="IAC"
@@ -69,7 +69,7 @@ select_device() {
 
 # Get output filename
 get_output_name() {
-    echo -e "${YELLOW}Filename (without .mid) [default: auto]:${NC}"
+    echo -e "${YELLOW}Filename (without .mid) [default: auto]:${NC}" >&2
     read -r -p "> " FILENAME
     echo "$FILENAME"
 }
