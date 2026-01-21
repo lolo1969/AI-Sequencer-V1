@@ -1,0 +1,37 @@
+# AI Sequencer V2 — Requirements
+# 
+# Installation:
+#   python3 -m venv venv
+#   source venv/bin/activate
+#   pip install -r requirements.txt
+
+# ==================== Core ====================
+mido>=1.2.10
+python-rtmidi>=1.5.0
+numpy>=1.21.0
+
+# ==================== AI / LLM ====================
+openai>=1.0.0
+
+# ==================== Magenta (Optional) ====================
+# Magenta erfordert TensorFlow und hat komplexere Dependencies
+# Installiere separat wenn gewünscht:
+#
+#   pip install note-seq
+#   pip install magenta
+#
+# Hinweis: Magenta funktioniert am besten mit Python 3.8-3.10
+# und kann Konflikte mit neueren TensorFlow-Versionen haben.
+#
+# Falls Magenta Probleme macht, funktioniert der Sequencer
+# auch ohne - er nutzt dann den algorithmischen Fallback.
+
+# ==================== Optional Utilities ====================
+# pretty-midi>=0.2.10      # Alternative MIDI-Bibliothek
+# music21>=8.0.0           # Musiktheorie-Analyse
+# librosa>=0.10.0          # Audio-Analyse (für zukünftige Features)
+
+# ==================== Development ====================
+# pytest>=7.0.0            # Testing
+# black>=22.0.0            # Code Formatting
+# mypy>=1.0.0              # Type Checking

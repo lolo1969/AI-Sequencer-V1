@@ -1,0 +1,172 @@
+# ============================================================
+# AI SEQUENCER V2 — BEISPIEL-PROMPTS
+# ============================================================
+# 
+# Kopiere einen dieser Prompts in deine prompt.txt
+# oder verwende sie direkt mit --text
+#
+# Tipps für gute Prompts:
+# • Beschreibe Stimmung und Atmosphäre bildhaft
+# • Nenne Tempo-Gefühl (nicht unbedingt exakte BPM)
+# • Erwähne Referenz-Künstler für den Stil
+# • Beschreibe die gewünschte Entwicklung
+# ============================================================
+
+
+# ----------------------
+# AMBIENT / DRONE
+# ----------------------
+
+[AMBIENT_01]
+Tiefe Ambient-Landschaft mit ätherischen Pad-Schwellern.
+Sehr wenige Noten, maximaler Raum zwischen den Klängen.
+Langsam aufbauend wie aufziehender Morgennebel über einem stillen See.
+E Dorian. Inspiriert von Stars of the Lid und Eluvium.
+Keine plötzlichen Änderungen, alles fließt unmerklich ineinander.
+
+[AMBIENT_02]
+Nachtlicher Drone. Tiefe, brummende Texturen die sich
+kaum merklich verschieben. Vereinzelte hohe Töne wie
+ferne Sterne. Sehr langsam, fast stillstehend.
+A-Moll mit lydischen Einflüssen.
+
+[AMBIENT_03]
+Kristalline Ambient-Meditation. Hohe, glockenhelle Töne
+über einem warmen Pad-Bett. Wie Sonnenlicht das durch
+Eiskristalle bricht. C-Dur, aber nicht zu fröhlich.
+Inspiriert von Harold Budd und Brian Eno.
+
+
+# ----------------------
+# MINIMAL / ELEKTRONISCH
+# ----------------------
+
+[MINIMAL_01]
+Hypnotischer Minimal Techno. Treibende Bassline in A-Moll.
+Punktierte Arpeggios die sich über lange Zeit entwickeln.
+Mechanisch aber organisch, wie eine atmende Maschine.
+124 BPM. Referenz: Richie Hawtin, Robert Hood.
+
+[MINIMAL_02]
+Microhouse-Landschaft. Sanft pulsierend, nicht aggressiv.
+Kleine melodische Fragmente die auftauchen und verschwinden.
+Viel Raum, reduziert auf das Wesentliche.
+116 BPM, F-Moll.
+
+[MINIMAL_03]
+Berlin-Schule Sequencer-Musik. Analoge, warme Arpeggios
+die sich langsam in der Tonhöhe verschieben.
+Kosmisch und hypnotisch. Tangerine Dream meets moderner Minimalismus.
+100 BPM, Dorian in D.
+
+
+# ----------------------
+# NEOKLASSIK / PIANO
+# ----------------------
+
+[NEOKLASSIK_01]
+Melancholische Klavierballade im Stil von Nils Frahm.
+Spärliche, bedächtige Melodie mit gelegentlichen
+Harmoniewechseln. Viel Stille und Raum zum Atmen.
+Tempo: Sehr langsam, introspektiv. A-Moll.
+
+[NEOKLASSIK_02]
+Filmmusik für eine Szene des Abschieds. Piano und
+langsame Streicherarpeggios. Bittersüß, nicht tragisch.
+Aufbauend zu einem emotionalen Höhepunkt, dann sanft ausklingend.
+D-Moll nach F-Dur modulierend.
+
+[NEOKLASSIK_03]
+Morgendämmerung in einer leeren Kathedrale. Hohe,
+klare Klaviertöne mit langen Nachhall-Pausen.
+Sakral aber nicht religiös. Aufsteigend wie das erste Licht.
+E-Dur mit kirchentonalen Elementen.
+
+
+# ----------------------
+# EXPERIMENTELL / ABSTRAKT
+# ----------------------
+
+[EXPERIMENTAL_01]
+Zerfallende Struktur. Beginnt geordnet und melodisch,
+löst sich langsam in Fragmenten auf. Wie eine Erinnerung
+die verblasst. Zufällige Pausen, unerwartete Intervalle.
+Chromatisch, ohne feste Tonart.
+
+[EXPERIMENTAL_02]
+Maschinelle Träume. Glitchende Arpeggios die sich
+selbst unterbrechen. Polyrhythmische Überlagerungen.
+Digital aber organisch zerfallend. 90 BPM, instabil.
+
+[EXPERIMENTAL_03]
+Unterwasserklang. Alles gefiltert und gedämpft.
+Langsame Bewegungen, verzerrte Melodiefragmente.
+Blau-grüne Stimmung, druckvolle Tiefe.
+F#-Moll, sehr langsam, keine klaren Rhythmen.
+
+
+# ----------------------
+# CINEMATIC / EPIC
+# ----------------------
+
+[CINEMATIC_01]
+Epischer Aufbau für eine Heldenreise. Beginnt zaghaft
+mit einzelnen Tönen, baut über 4 Minuten zu einem
+triumphalen Höhepunkt auf. Blechbläser-artige Lead-Linien.
+D-Dur, majestätisch und erhebend.
+
+[CINEMATIC_02]
+Bedrohliche Spannung. Tiefe pulsierende Bässe,
+dissonante Streicher-Tremoli. Etwas Gefährliches nähert sich.
+Langsam eskalierend, nie auflösend.
+E-Moll mit chromatischen Einschüben.
+
+[CINEMATIC_03]
+Weite Landschaft aus der Vogelperspektive.
+Majestätisch und ruhig gleichzeitig. Breite Akkorde,
+aufsteigende Melodie. Inspiriert von Icelandic Post-Rock.
+A-Dur, gemäßigtes Tempo.
+
+
+# ----------------------
+# MEDITATION / HEALING
+# ----------------------
+
+[MEDITATION_01]
+Heilende Frequenzen. Sanfte, schwebende Töne ohne
+erkennbare Melodie. Warm und umhüllend wie eine Decke.
+Keine Anspannung, nur Loslassen.
+432 Hz Stimmung, C-Dur, extrem langsam.
+
+[MEDITATION_02]
+Atemübung in Musik. Einatmen: aufsteigende Phrase.
+Ausatmen: absteigende Phrase. Zyklisch, hypnotisch.
+4 Sekunden Einatmen, 4 Sekunden Ausatmen.
+G-Dur, Pentatonik.
+
+[MEDITATION_03]
+Klangschalen-Simulation. Obertonreiche Texturen die
+langsam ausschwingen. Glockenartige Attacks mit
+langen Decays. Tibetische Meditation. F-Lydisch.
+
+
+# ----------------------
+# DARK / INDUSTRIAL
+# ----------------------
+
+[DARK_01]
+Post-industrielle Ruine. Metallische Resonanzen,
+tiefe verzerrte Drohnen. Wie eine verlassene Fabrik
+die noch atmet. Bedrohlich aber faszinierend.
+A-Phrygisch, langsam und schwer.
+
+[DARK_02]
+Ritueller Ambient. Tribale Untertöne, repetitive
+Basslinien wie ein Herzschlag. Archaisch und modern.
+Aufbauend zu ekstatischem Höhepunkt.
+D-Moll, 80 BPM.
+
+[DARK_03]
+Noir-Soundtrack. Regennasse Straßen, Neonlichter.
+Jazz-beeinflusste Harmonien, aber elektronisch ausgeführt.
+Mysterisch, urban, nachts. B-Moll, mittleres Tempo.

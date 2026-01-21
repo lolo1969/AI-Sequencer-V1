@@ -1,117 +1,278 @@
-# AI Sequencer V1
+# 🎵 AI Sequencer V2
 
-Generative minimal sequencer for any MIDI device with 4 channels: Bass, Melody, Lead, Arp
+> **Prompt → Music**: Describe your music like a story, and the AI composes it for you.
 
-## Features
-- 4 independent channels: Bass, Melody, Lead, Arp (Arpeggio)
-- Starts with a small motif (few notes)
-- Slowly evolves: small changes per cycle (add/rotate/register-shift)
-- Long gates/ties (configurable), subtle phase shifts, humanization
-- Multi-channel MIDI output (all channels play simultaneously)
-- MIDI range and config validation
-- Stable tempo (recommended: hardware clock or internal clock module)
-- Reliable shutdown
-- **Arp channel:** Fast arpeggios, short notes, staccato, chord-based
-- OpenAI GPT-3.5-turbo for musical parameters from text prompt
+[![Python 3.9+](https://img.shields.io/badge/Python-3.9+-blue.svg)](https://www.python.org)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-## Installation
+## 🎼 The Concept
 
-### Requirements
-- Python 3.8 or higher
-- Virtual environment (recommended)
-- Python libraries:
-  - `mido`
-  - `python-rtmidi`
-  - `numpy`
-  - `openai`
+AI Sequencer V2 transforms natural language descriptions into living MIDI compositions. Imagine describing to a composer what music you want to hear — and they compose it for you instantly.
 
-### Setup
-1. Clone the repository or download the project files
-2. Open the project directory:
-   ```bash
-   cd /path/to/AI-Sequencer-V1
-   ```
-3. Create and activate a virtual environment:
-   ```bash
-   python3 -m venv venv
-   source venv/bin/activate
-   ```
-4. Install the libraries:
-   ```bash
-   pip install --upgrade pip
-   pip install mido python-rtmidi numpy openai
-   ```
-
-## MIDI Device Setup
-1. Activate your MIDI interface or virtual MIDI device (e.g. IAC Driver on macOS, LoopMIDI on Windows)
-2. Target device/software:
-   - Set up 4 MIDI receivers (synths, DAW, modular, etc.) to the desired channels:
-     - **Bass**: Channel 1
-     - **Melody**: Channel 2
-     - **Lead**: Channel 3
-     - **Arp**: Channel 4
-   - Device: e.g. "IAC Driver Bus 1" or any available MIDI output
-   - Connect V/OCT and GATE (for modular)
-3. (Optional) Add a clock module for synchronization
-
-## Running the Sequencer
-1. (Optional) Set your OPENAI_API_KEY:
-   ```bash
-   export OPENAI_API_KEY=your_api_key_here
-   ```
-2. Start the sequencer:
-   ```bash
-   python3 ai-sequencer.py --device <MIDI-Device-Name>
-   ```
-3. Stop: `Ctrl+C`
-
-## Example prompt.txt
 ```
-Slow, meditative ambient in E major. Minimal notes, maximum space. Long sustained tones with gentle evolution. Inspired by Stars of the Lid and Eluvium.
-
-bpm: 50
-scale: major
-root: E3
-bars: 16
-steps_per_bar: 8
-
-mel_base_motif_degrees: [0, 4, 7]
-mel_min_len_steps: 8
-mel_max_len_steps: 32
-mel_tie_bias: 0.95
-mel_ghost_prob: 0.0
-mel_evolve_every_bars: 32
-
-bass_base_motif_degrees: [0]
-bass_min_len_steps: 16
-bass_max_len_steps: 64
-bass_tie_bias: 0.98
-bass_register_offset_oct: -1
-bass_evolve_every_bars: 64
-
-lead_base_motif_degrees: [7, 11]
-lead_min_len_steps: 12
-lead_max_len_steps: 48
-lead_tie_bias: 0.9
-lead_register_offset_oct: 1
-lead_evolve_every_bars: 48
-
-arp_base_motif_degrees: [0, 4, 7, 11, 12]
-arp_min_len_steps: 2
-arp_max_len_steps: 4
-arp_tie_bias: 0.1
-arp_register_offset_oct: 1
-arp_evolve_every_bars: 8
-
-harmony_enable: true
-progression_degrees: [0, 4, 5, 3]
-chord_change_every_bars: 4
-chord_tone_bias: 0.9
-
-swing: 0.0
-jitter_ms: 0
-clock_enable: true
+┌─────────────────────────────────────────────────────────────────┐
+│  "Dark ambient landscape, slowly ascending                     │
+│   like morning mist over a lake, inspired by                   │
+│   Stars of the Lid..."                                          │
+└─────────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────────┐
+│  STAGE 1: GPT-4 → Composition Plan (Chords, Structure, Dynamics)│
+│  STAGE 2: Magenta → MIDI Generation (Bass, Melody, Lead, Arp)  │
+│  STAGE 3: Evolution → Live Playback with Mutations             │
+└─────────────────────────────────────────────────────────────────┘
+                              ↓
+                       🎹 MIDI Output
+              (DAW, Hardware Synths, Modular, ...)
 ```
 
-## License
+---
+
+## 🚀 Quick Start
+
+### Installation
+
+```bash
+# Create virtual environment
+python3 -m venv venv
+source venv/bin/activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Set OpenAI API Key
+export OPENAI_API_KEY="your-api-key"
+```
+
+### First Composition
+
+**Easiest way with the start script:**
+
+```bash
+# Launch interactive menu
+./start.sh
+```
+
+**Or directly via command line:**
+
+```bash
+# Send live to DAW (use --list-devices to find your device name)
+./start.sh --device "Your MIDI Device" --text "Melancholic ambient in E minor"
+
+# Generate MIDI file only
+./start.sh --generate-only --text "Hypnotic minimal techno" --bars 32
+
+# Replay saved plan
+./start.sh --plan output/my_composition_plan.json
+```
+
+---
+
+## 🎛️ Start Script (start.sh)
+
+The interactive menu offers the following options:
+
+| Option | Description |
+|--------|-------------|
+| **1) Live Mode** | Send MIDI live to device/DAW |
+| **2) Generate Only** | Create MIDI file without playback |
+| **3) Custom Prompt** | Describe music with your own text |
+| **4) Load Plan** | Replay saved composition |
+| **5) Show Devices** | List available MIDI outputs |
+
+**Direct usage with arguments:**
+
+```bash
+./start.sh --device "Your MIDI Device" --bars 16
+./start.sh --generate-only --output my_track.mid
+./start.sh --plan output/my_composition_plan.json
+```
+
+---
+
+## 📖 How to Write Good Prompts
+
+### The Art of Music Description
+
+| Element | Examples |
+|---------|----------|
+| **Mood** | dark, bright, melancholic, euphoric, ominous |
+| **Tempo** | slow, meditative, driving, pulsating, 120 BPM |
+| **Texture** | sparse, dense, ethereal, massive, delicate |
+| **Key** | E minor, A minor, D Dorian, F# Phrygian |
+| **Development** | ascending, fading, wave-like, building to climax |
+| **References** | "in the style of...", "inspired by..." |
+
+### Example Prompts
+
+```
+# Ambient
+Deep ambient landscape with ethereal pad swells.
+Very few notes, maximum space between sounds.
+Slowly building like rising fog. E Dorian.
+Inspired by Stars of the Lid and Eluvium.
+
+# Minimal Techno  
+Hypnotic minimal techno. Driving bassline in A minor.
+Dotted arpeggios that slowly evolve.
+Mechanical yet organic. 124 BPM.
+
+# Neoclassical
+Melancholic piano ballad in the style of Nils Frahm.
+Sparse, deliberate melody. Occasional deep bass notes.
+Lots of silence and room to breathe.
+```
+
+More examples in `example_prompts.txt`.
+
+---
+
+## 🔧 Architecture
+
+### Stage 1: GPT-4 as Music Director
+GPT-4 interprets your prompt and creates a structured **composition plan**:
+- Key and scale
+- Chord progression with timing
+- Emotional arc (intensity curve)
+- Instructions for each channel (Bass, Melody, Lead, Arp)
+
+### Stage 2: MIDI Generation
+The composition plan is translated into concrete MIDI notes:
+- **MusicVAE** (optional): Neural melody generation
+- **Algorithmic Generator**: Music theory-based generation
+- Follows chord structure and intensity curve
+
+### Stage 3: Evolution Engine
+Generated patterns evolve during live playback:
+- Small mutations (pitch, velocity, timing)
+- Organic adding/removing of notes
+- Follows the intensity curve
+
+---
+
+## 📁 Project Structure
+
+```
+AI-Sequencer-V1/
+├── start.sh                # 🚀 Starter script (interactive menu)
+├── ai-sequencer-v2.py      # Main script
+├── gpt_composer.py         # GPT-4 composition module
+├── magenta_generator.py    # MIDI generation
+├── requirements.txt        # Python dependencies
+│
+├── prompt.txt              # Your creative prompt
+├── example_prompts.txt     # Examples for different styles
+│
+└── output/                 # Generated compositions
+    ├── <title>.mid              # MIDI file
+    ├── <title>_plan.json        # Composition plan (reusable)
+    └── ...
+```
+
+---
+
+## ⚙️ Command Line Options
+
+```
+Options:
+  --device, -d      MIDI device (run --list-devices to see available)
+  --text, -t        Direct prompt text
+  --prompt, -p      Path to prompt file (default: prompt.txt)
+  --plan            Load saved composition plan (JSON)
+  --bars, -b        Number of bars (default: 32)
+  --output, -o      MIDI output file
+  --generate-only   Generate MIDI only, no live playback
+  --no-save         Don't save MIDI automatically
+  --list-devices    Show available MIDI devices
+```
+
+**Examples:**
+
+```bash
+# Live playback with 16 bars
+python3 ai-sequencer-v2.py --device "Your MIDI Device" --bars 16
+
+# Prompt from file, send to hardware
+python3 ai-sequencer-v2.py --prompt prompt.txt --device "USB MIDI"
+
+# Generate MIDI only with custom name
+python3 ai-sequencer-v2.py --generate-only --text "Dark Ambient" --output dark.mid
+
+# Play saved plan
+python3 ai-sequencer-v2.py --plan output/my_composition_plan.json
+```
+
+---
+
+## 🔌 MIDI Setup
+
+### Virtual MIDI (for DAW routing)
+- **macOS**: Use IAC Driver (Audio MIDI Setup → MIDI Studio)
+- **Windows**: Use loopMIDI or similar virtual MIDI cable
+- **Linux**: Use ALSA virtual MIDI ports
+
+### Hardware (USB MIDI, etc.)
+```bash
+# Show available devices
+./start.sh --list-devices
+
+# Send to hardware
+./start.sh --device "Your Device Name"
+```
+
+### DAW Integration
+Set your DAW to the corresponding MIDI input and create 4 MIDI tracks:
+
+| Channel | Instrument |
+|---------|------------|
+| 1 | Bass |
+| 2 | Melody |
+| 3 | Lead |
+| 4 | Arp |
+
+---
+
+## 🎹 Saved Compositions
+
+Each generation automatically saves:
+- **MIDI file** (`.mid`) — Directly importable to DAW
+- **Composition plan** (`_plan.json`) — Reusable for new variations
+
+**Replay a plan:**
+```bash
+./start.sh --plan output/example_ambient_plan.json
+```
+
+Your generated compositions will appear in the `output/` folder with names derived from the prompt.
+
+---
+
+## 🧪 Optional Magenta Installation
+
+For neural melody generation you can install Magenta:
+
+```bash
+pip install note-seq magenta
+```
+
+**Note**: The sequencer works without Magenta. It uses the algorithmic fallback which also produces music theory-based results.
+
+---
+
+## 🔮 Future Features
+
+- [ ] Real-time prompt changes during playback
+- [ ] Multi-track recording to DAW
+- [ ] Web interface
+- [ ] MusicGen audio generation
+- [ ] Integration with Suno, Udio, etc.
+
+---
+
+## 📝 License
+
 MIT License
+
+---
+
+💡 **Tip**: Best results come from detailed, vivid descriptions. Think like a director describing a film scene to a composer!
