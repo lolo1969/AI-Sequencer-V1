@@ -1,15 +1,15 @@
 # ============================================================
-# AI SEQUENCER V2 — BEISPIEL-PROMPTS
+# AI SEQUENCER V2 — EXAMPLE PROMPTS
 # ============================================================
 # 
-# Kopiere einen dieser Prompts in deine prompt.txt
-# oder verwende sie direkt mit --text
+# Copy one of these prompts to your prompt.txt
+# or use them directly with --text
 #
-# Tipps für gute Prompts:
-# • Beschreibe Stimmung und Atmosphäre bildhaft
-# • Nenne Tempo-Gefühl (nicht unbedingt exakte BPM)
-# • Erwähne Referenz-Künstler für den Stil
-# • Beschreibe die gewünschte Entwicklung
+# Tips for good prompts:
+# • Describe mood and atmosphere vividly
+# • Mention tempo feel (not necessarily exact BPM)
+# • Reference artists for style guidance
+# • Describe the desired development/arc
 # ============================================================
 
 
@@ -18,91 +18,91 @@
 # ----------------------
 
 [AMBIENT_01]
-Tiefe Ambient-Landschaft mit ätherischen Pad-Schwellern.
-Sehr wenige Noten, maximaler Raum zwischen den Klängen.
-Langsam aufbauend wie aufziehender Morgennebel über einem stillen See.
-E Dorian. Inspiriert von Stars of the Lid und Eluvium.
-Keine plötzlichen Änderungen, alles fließt unmerklich ineinander.
+Deep ambient landscape with ethereal pad swells.
+Very few notes, maximum space between sounds.
+Slowly building like morning mist rising over a still lake.
+E Dorian. Inspired by Stars of the Lid and Eluvium.
+No sudden changes, everything flows imperceptibly together.
 
 [AMBIENT_02]
-Nachtlicher Drone. Tiefe, brummende Texturen die sich
-kaum merklich verschieben. Vereinzelte hohe Töne wie
-ferne Sterne. Sehr langsam, fast stillstehend.
-A-Moll mit lydischen Einflüssen.
+Nocturnal drone. Deep, humming textures that shift
+almost imperceptibly. Scattered high tones like
+distant stars. Very slow, almost stationary.
+A minor with Lydian influences.
 
 [AMBIENT_03]
-Kristalline Ambient-Meditation. Hohe, glockenhelle Töne
-über einem warmen Pad-Bett. Wie Sonnenlicht das durch
-Eiskristalle bricht. C-Dur, aber nicht zu fröhlich.
-Inspiriert von Harold Budd und Brian Eno.
+Crystalline ambient meditation. High, bell-like tones
+over a warm pad bed. Like sunlight breaking through
+ice crystals. C major, but not too cheerful.
+Inspired by Harold Budd and Brian Eno.
 
 
 # ----------------------
-# MINIMAL / ELEKTRONISCH
+# MINIMAL / ELECTRONIC
 # ----------------------
 
 [MINIMAL_01]
-Hypnotischer Minimal Techno. Treibende Bassline in A-Moll.
-Punktierte Arpeggios die sich über lange Zeit entwickeln.
-Mechanisch aber organisch, wie eine atmende Maschine.
-124 BPM. Referenz: Richie Hawtin, Robert Hood.
+Hypnotic minimal techno. Driving bassline in A minor.
+Dotted arpeggios that evolve over long periods.
+Mechanical yet organic, like a breathing machine.
+124 BPM. Reference: Richie Hawtin, Robert Hood.
 
 [MINIMAL_02]
-Microhouse-Landschaft. Sanft pulsierend, nicht aggressiv.
-Kleine melodische Fragmente die auftauchen und verschwinden.
-Viel Raum, reduziert auf das Wesentliche.
-116 BPM, F-Moll.
+Microhouse landscape. Gently pulsating, not aggressive.
+Small melodic fragments that appear and disappear.
+Lots of space, reduced to the essentials.
+116 BPM, F minor.
 
 [MINIMAL_03]
-Berlin-Schule Sequencer-Musik. Analoge, warme Arpeggios
-die sich langsam in der Tonhöhe verschieben.
-Kosmisch und hypnotisch. Tangerine Dream meets moderner Minimalismus.
+Berlin School sequencer music. Analog, warm arpeggios
+that slowly shift in pitch.
+Cosmic and hypnotic. Tangerine Dream meets modern minimalism.
 100 BPM, Dorian in D.
 
 
 # ----------------------
-# NEOKLASSIK / PIANO
+# NEOCLASSICAL / PIANO
 # ----------------------
 
-[NEOKLASSIK_01]
-Melancholische Klavierballade im Stil von Nils Frahm.
-Spärliche, bedächtige Melodie mit gelegentlichen
-Harmoniewechseln. Viel Stille und Raum zum Atmen.
-Tempo: Sehr langsam, introspektiv. A-Moll.
+[NEOCLASSICAL_01]
+Melancholic piano ballad in the style of Nils Frahm.
+Sparse, deliberate melody with occasional
+harmonic shifts. Lots of silence and room to breathe.
+Tempo: Very slow, introspective. A minor.
 
-[NEOKLASSIK_02]
-Filmmusik für eine Szene des Abschieds. Piano und
-langsame Streicherarpeggios. Bittersüß, nicht tragisch.
-Aufbauend zu einem emotionalen Höhepunkt, dann sanft ausklingend.
-D-Moll nach F-Dur modulierend.
+[NEOCLASSICAL_02]
+Film score for a farewell scene. Piano and
+slow string arpeggios. Bittersweet, not tragic.
+Building to an emotional climax, then gently fading.
+D minor modulating to F major.
 
-[NEOKLASSIK_03]
-Morgendämmerung in einer leeren Kathedrale. Hohe,
-klare Klaviertöne mit langen Nachhall-Pausen.
-Sakral aber nicht religiös. Aufsteigend wie das erste Licht.
-E-Dur mit kirchentonalen Elementen.
+[NEOCLASSICAL_03]
+Dawn in an empty cathedral. High,
+clear piano tones with long reverb pauses.
+Sacred but not religious. Ascending like first light.
+E major with church mode elements.
 
 
 # ----------------------
-# EXPERIMENTELL / ABSTRAKT
+# EXPERIMENTAL / ABSTRACT
 # ----------------------
 
 [EXPERIMENTAL_01]
-Zerfallende Struktur. Beginnt geordnet und melodisch,
-löst sich langsam in Fragmenten auf. Wie eine Erinnerung
-die verblasst. Zufällige Pausen, unerwartete Intervalle.
-Chromatisch, ohne feste Tonart.
+Decaying structure. Begins orderly and melodic,
+slowly dissolves into fragments. Like a memory
+that fades. Random pauses, unexpected intervals.
+Chromatic, no fixed key.
 
 [EXPERIMENTAL_02]
-Maschinelle Träume. Glitchende Arpeggios die sich
-selbst unterbrechen. Polyrhythmische Überlagerungen.
-Digital aber organisch zerfallend. 90 BPM, instabil.
+Machine dreams. Glitching arpeggios that
+interrupt themselves. Polyrhythmic overlays.
+Digital but organically decaying. 90 BPM, unstable.
 
 [EXPERIMENTAL_03]
-Unterwasserklang. Alles gefiltert und gedämpft.
-Langsame Bewegungen, verzerrte Melodiefragmente.
-Blau-grüne Stimmung, druckvolle Tiefe.
-F#-Moll, sehr langsam, keine klaren Rhythmen.
+Underwater sound. Everything filtered and muffled.
+Slow movements, distorted melody fragments.
+Blue-green mood, pressurized depth.
+F# minor, very slow, no clear rhythms.
 
 
 # ----------------------
@@ -110,22 +110,22 @@ F#-Moll, sehr langsam, keine klaren Rhythmen.
 # ----------------------
 
 [CINEMATIC_01]
-Epischer Aufbau für eine Heldenreise. Beginnt zaghaft
-mit einzelnen Tönen, baut über 4 Minuten zu einem
-triumphalen Höhepunkt auf. Blechbläser-artige Lead-Linien.
-D-Dur, majestätisch und erhebend.
+Epic buildup for a hero's journey. Begins tentatively
+with single notes, builds over 4 minutes to a
+triumphant climax. Brass-like lead lines.
+D major, majestic and uplifting.
 
 [CINEMATIC_02]
-Bedrohliche Spannung. Tiefe pulsierende Bässe,
-dissonante Streicher-Tremoli. Etwas Gefährliches nähert sich.
-Langsam eskalierend, nie auflösend.
-E-Moll mit chromatischen Einschüben.
+Threatening tension. Deep pulsating bass,
+dissonant string tremoli. Something dangerous approaches.
+Slowly escalating, never resolving.
+E minor with chromatic insertions.
 
 [CINEMATIC_03]
-Weite Landschaft aus der Vogelperspektive.
-Majestätisch und ruhig gleichzeitig. Breite Akkorde,
-aufsteigende Melodie. Inspiriert von Icelandic Post-Rock.
-A-Dur, gemäßigtes Tempo.
+Vast landscape from bird's eye view.
+Majestic and calm simultaneously. Wide chords,
+ascending melody. Inspired by Icelandic post-rock.
+A major, moderate tempo.
 
 
 # ----------------------
@@ -133,21 +133,21 @@ A-Dur, gemäßigtes Tempo.
 # ----------------------
 
 [MEDITATION_01]
-Heilende Frequenzen. Sanfte, schwebende Töne ohne
-erkennbare Melodie. Warm und umhüllend wie eine Decke.
-Keine Anspannung, nur Loslassen.
-432 Hz Stimmung, C-Dur, extrem langsam.
+Healing frequencies. Gentle, floating tones without
+recognizable melody. Warm and enveloping like a blanket.
+No tension, only release.
+432 Hz tuning, C major, extremely slow.
 
 [MEDITATION_02]
-Atemübung in Musik. Einatmen: aufsteigende Phrase.
-Ausatmen: absteigende Phrase. Zyklisch, hypnotisch.
-4 Sekunden Einatmen, 4 Sekunden Ausatmen.
-G-Dur, Pentatonik.
+Breathing exercise in music. Inhale: ascending phrase.
+Exhale: descending phrase. Cyclical, hypnotic.
+4 seconds inhale, 4 seconds exhale.
+G major, pentatonic.
 
 [MEDITATION_03]
-Klangschalen-Simulation. Obertonreiche Texturen die
-langsam ausschwingen. Glockenartige Attacks mit
-langen Decays. Tibetische Meditation. F-Lydisch.
+Singing bowl simulation. Overtone-rich textures that
+slowly fade out. Bell-like attacks with
+long decays. Tibetan meditation. F Lydian.
 
 
 # ----------------------
@@ -155,18 +155,18 @@ langen Decays. Tibetische Meditation. F-Lydisch.
 # ----------------------
 
 [DARK_01]
-Post-industrielle Ruine. Metallische Resonanzen,
-tiefe verzerrte Drohnen. Wie eine verlassene Fabrik
-die noch atmet. Bedrohlich aber faszinierend.
-A-Phrygisch, langsam und schwer.
+Post-industrial ruin. Metallic resonances,
+deep distorted drones. Like an abandoned factory
+still breathing. Threatening but fascinating.
+A Phrygian, slow and heavy.
 
 [DARK_02]
-Ritueller Ambient. Tribale Untertöne, repetitive
-Basslinien wie ein Herzschlag. Archaisch und modern.
-Aufbauend zu ekstatischem Höhepunkt.
-D-Moll, 80 BPM.
+Ritual ambient. Tribal undertones, repetitive
+basslines like a heartbeat. Archaic and modern.
+Building to an ecstatic climax.
+D minor, 80 BPM.
 
 [DARK_03]
-Noir-Soundtrack. Regennasse Straßen, Neonlichter.
-Jazz-beeinflusste Harmonien, aber elektronisch ausgeführt.
-Mysterisch, urban, nachts. B-Moll, mittleres Tempo.
+Noir soundtrack. Rain-wet streets, neon lights.
+Jazz-influenced harmonies, but electronically executed.
+Mysterious, urban, nocturnal. B minor, medium tempo.
