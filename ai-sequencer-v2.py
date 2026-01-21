@@ -472,9 +472,12 @@ class AISequencerV2:
         
         # MIDI speichern
         if save_midi:
-            filename = f"{self.plan.title.replace(' ', '_').lower()}.mid"
+            # Sicherstellen, dass output/ existiert
+            os.makedirs('output', exist_ok=True)
+            base_name = self.plan.title.replace(' ', '_').lower()
+            filename = f"output/{base_name}.mid"
             self.save_midi(filename)
-            self.save_plan(f"{self.plan.title.replace(' ', '_').lower()}_plan.json")
+            self.save_plan(f"output/{base_name}_plan.json")
         
         # Stufe 3: Live-Wiedergabe
         if live:

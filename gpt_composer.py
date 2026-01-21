@@ -8,6 +8,7 @@
 
 import os
 import json
+import random
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, asdict
 from enum import Enum
@@ -429,10 +430,6 @@ Jetzt erstelle deinen eigenen Kompositionsplan basierend auf dem Prompt."""
         with open(filepath, 'w', encoding='utf-8') as f:
             f.write(self.to_json(plan))
         print(f"[GPTComposer] Plan gespeichert: {filepath}")
-
-
-# Benötigt für Fallback
-import random
 
 
 # Demo

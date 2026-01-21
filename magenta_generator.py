@@ -22,6 +22,11 @@ from dataclasses import dataclass
 import mido
 from mido import Message, MidiFile, MidiTrack
 
+# Type hints für CompositionPlan (Import wird umgangen um circular import zu vermeiden)
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from gpt_composer import CompositionPlan
+
 # Magenta (optional - mit Fallback)
 MAGENTA_AVAILABLE = False
 try:

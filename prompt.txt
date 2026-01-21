@@ -1,2 +1,4 @@
-Create a dark, hypnotic minimal techno sequence inspired by Richie Hawtin and Robert Hood. Use a driving 130 BPM tempo with tight, staccato notes. The bass should be a pulsing, repetitive low-end pattern on root and fifth. Melody should be sparse, metallic, and percussive with short gate times. Lead adds occasional high-pitched bleeps and acid-like sequences. Use minor or phrygian scale for a darker mood. High swing and subtle jitter for groove.
-clock_enable: false
+Ritual ambient. Tribal undertones, repetitive
+basslines like a heartbeat. Archaic and modern.
+Building to an ecstatic climax.
+D minor, 80 BPM.
