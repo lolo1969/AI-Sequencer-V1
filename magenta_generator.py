@@ -262,13 +262,16 @@ class MagentaGenerator:
     def _generate_bass(self, config: Dict, chords: List[str], chord_bars: int,
                        root: int, scale: str, ticks_per_bar: int, 
                        total_bars: int, intensity: List[float]) -> GeneratedSequence:
-        """Generiert Bass-Linie"""
+        """Generiert Bass-Linie mit mehr Variation"""
         notes = []
         
         octave_offset = config.get('octave_offset', -1)
         base_octave = 2 + octave_offset  # Bass-Bereich
         density = config.get('note_density', 0.2)
         pattern = config.get('rhythm_pattern', 'sustained')
+        role = config.get('role', 'root')
+        
+        scale_intervals = SCALE_INTERVALS.get(scale, SCALE_INTERVALS['minor'])
         
         current_tick = 0
         bar = 0
@@ -283,43 +286,89 @@ class MagentaGenerator:
             intensity_idx = int((bar / total_bars) * len(intensity))
             current_intensity = intensity[min(intensity_idx, len(intensity) - 1)]
             
-            # Bass spielt typischerweise den Grundton
-            bass_note = 12 * (base_octave + 1) + chord_root
+            # Bass-Noten: Grundton + optional Quinte oder Oktave
+            bass_notes_options = [
+                12 * (base_octave + 1) + chord_root,  # Grundton
+                12 * (base_octave + 1) + chord_root + 7,  # Quinte
+                12 * (base_octave) + chord_root,  # Oktave tiefer
+            ]
             
             # Velocity basierend auf Intensität
             velocity = int(50 + current_intensity * 50)
             
-            if pattern == 'sustained':
-                # Lange gehaltene Noten - immer mindestens eine Note pro Akkordwechsel
+            if pattern == 'sustained' or pattern == 'legato':
+                # Lange gehaltene Noten
                 note_duration = ticks_per_bar * chord_bars
-                # Für Ambient/sustained: immer spielen (mit density für Variationen)
+                bass_note = bass_notes_options[0]
                 notes.append({
                     'pitch': bass_note,
                     'start': current_tick,
                     'duration': note_duration,
                     'velocity': velocity
-                    })
+                })
                 current_tick += ticks_per_bar * chord_bars
                 bar += chord_bars
             
-            elif pattern == 'pulse':
-                # Rhythmische Pulse
-                for beat in range(chord_bars * 4):  # Pro Akkord-Periode
-                    if random.random() < density:
+            elif pattern == 'pulse' or pattern == 'steady':
+                # Rhythmische Pulse mit Variation
+                beats_per_chord = chord_bars * 4
+                for beat in range(beats_per_chord):
+                    # Erster Schlag immer, andere nach Density
+                    if beat == 0 or random.random() < density:
+                        # Wähle Bass-Note: meist Grundton, manchmal Quinte
+                        if beat == 0:
+                            bass_note = bass_notes_options[0]
+                        else:
+                            bass_note = random.choice(bass_notes_options[:2])
+                        
                         notes.append({
                             'pitch': bass_note,
                             'start': current_tick,
                             'duration': ticks_per_bar // 4,
-                            'velocity': velocity
+                            'velocity': velocity if beat == 0 else velocity - 10
                         })
                     current_tick += ticks_per_bar // 4
                 bar += chord_bars
             
-            else:
-                # Standard: Ein Ton pro Takt
-                if random.random() < density * 3:
+            elif pattern == 'walking':
+                # Walking Bass - verschiedene Töne pro Beat
+                for beat in range(4):
+                    if beat == 0:
+                        bass_note = bass_notes_options[0]
+                    elif beat == 2:
+                        bass_note = bass_notes_options[1]  # Quinte
+                    else:
+                        # Durchgangston aus der Skala
+                        passing_interval = random.choice(scale_intervals[1:4])
+                        bass_note = 12 * (base_octave + 1) + (chord_root + passing_interval) % 12
+                    
                     notes.append({
                         'pitch': bass_note,
+                        'start': current_tick,
+                        'duration': ticks_per_bar // 4 - 20,
+                        'velocity': velocity
+                    })
+                    current_tick += ticks_per_bar // 4
+                bar += 1
+            
+            elif pattern == 'sparse' or pattern == 'minimal':
+                # Sehr spärlich - nur ab und zu
+                if random.random() < density * 1.5 or bar % chord_bars == 0:
+                    bass_note = bass_notes_options[0]
+                    notes.append({
+                        'pitch': bass_note,
+                        'start': current_tick,
+                        'duration': ticks_per_bar * 2,
+                        'velocity': velocity
+                    })
+                current_tick += ticks_per_bar
+                bar += 1
+            
+            else:
+                # Standard: Ein Ton pro Takt
+                if random.random() < density * 3 or bar % chord_bars == 0:
+                    notes.append({
+                        'pitch': bass_notes_options[0],
                         'start': current_tick,
                         'duration': ticks_per_bar,
                         'velocity': velocity
@@ -349,70 +398,121 @@ class MagentaGenerator:
                                      chord_bars: int, root: int, scale: str,
                                      ticks_per_bar: int, total_bars: int,
                                      intensity: List[float]) -> GeneratedSequence:
-        """Algorithmische Melodie-Generierung"""
+        """Algorithmische Melodie-Generierung mit mehr Variation"""
         notes = []
         
         octave_offset = config.get('octave_offset', 0)
         base_octave = 4 + octave_offset
         density = config.get('note_density', 0.4)
         motif_degrees = config.get('motif_degrees', [0, 2, 4, 5, 7])
+        rhythm_pattern = config.get('rhythm_pattern', 'varied')
+        articulation = config.get('articulation', 'legato')
         
         scale_intervals = SCALE_INTERVALS.get(scale, SCALE_INTERVALS['major'])
         
         current_tick = 0
         bar = 0
         last_pitch = None
+        phrase_start = True
         
-        # Melodie-Generierung mit Markov-ähnlichem Ansatz
+        # Verschiedene rhythmische Templates basierend auf Pattern
+        rhythm_templates = {
+            'sparse': [1, 0, 0, 0, 0.3, 0, 0, 0],  # Sehr wenige Noten
+            'varied': [1, 0.3, 0.5, 0.2, 0.6, 0.2, 0.4, 0.1],  # Abwechslungsreich
+            'flowing': [0.8, 0.6, 0.7, 0.5, 0.7, 0.6, 0.8, 0.4],  # Fließend
+            'syncopated': [1, 0, 0.7, 0, 0.3, 0.8, 0, 0.5],  # Synkopiert
+            'minimal': [1, 0, 0, 0, 0, 0, 0, 0.3],  # Sehr minimal
+        }
+        rhythm_template = rhythm_templates.get(rhythm_pattern, rhythm_templates['varied'])
+        
+        # Melodische Bewegungs-Richtung
+        direction = 1  # 1 = aufwärts, -1 = abwärts
+        direction_counter = 0
+        
         while bar < total_bars:
             chord_idx = (bar // chord_bars) % len(chords)
-            chord_root, _ = parse_chord(chords[chord_idx])
+            chord_root, chord_intervals = parse_chord(chords[chord_idx])
+            chord_notes_midi = [12 * (base_octave + 1) + (chord_root + i) % 12 for i in chord_intervals]
             
             # Intensität
             intensity_idx = int((bar / total_bars) * len(intensity))
             current_intensity = intensity[min(intensity_idx, len(intensity) - 1)]
             
-            # Mindestens 1-2 Noten pro Takt, mehr bei höherer Intensität
-            min_notes = max(1, int(density * 2))
-            notes_this_bar = min_notes + int(current_intensity * density * 4)
+            # 8tel-Noten Grid
+            ticks_per_eighth = ticks_per_bar // 8
             
-            for i in range(notes_this_bar):
-                # Etwas Zufall, aber garantiere mindestens die Hälfte der geplanten Noten
-                if i >= min_notes and random.random() > 0.5 + current_intensity * 0.3:
-                    current_tick += ticks_per_bar // notes_this_bar
-                    continue
+            for eighth in range(8):
+                # Rhythmus-Wahrscheinlichkeit aus Template + Intensity
+                base_prob = rhythm_template[eighth]
+                play_prob = base_prob * density * (0.5 + current_intensity)
                 
-                # Wähle Skalenton
-                if motif_degrees:
-                    degree = random.choice(motif_degrees)
-                else:
-                    degree = random.randint(0, len(scale_intervals) - 1)
+                # Phrasen-Anfang hat höhere Wahrscheinlichkeit
+                if phrase_start:
+                    play_prob = min(1.0, play_prob * 1.5)
+                    phrase_start = False
                 
-                interval = scale_intervals[degree % len(scale_intervals)]
-                octave_adjust = degree // len(scale_intervals)
-                
-                pitch = 12 * (base_octave + 1 + octave_adjust) + (root + interval) % 12
-                
-                # Melodische Bewegung bevorzugen (kleine Sprünge)
-                if last_pitch:
-                    while abs(pitch - last_pitch) > 7:
-                        if pitch > last_pitch:
-                            pitch -= 12
+                if random.random() < play_prob:
+                    # Wähle Tonhöhe
+                    if random.random() < 0.4:
+                        # Akkordton
+                        pitch = random.choice(chord_notes_midi)
+                    else:
+                        # Skalenton basierend auf Motiv
+                        if motif_degrees and random.random() < 0.7:
+                            degree = random.choice(motif_degrees)
                         else:
-                            pitch += 12
+                            degree = random.randint(0, len(scale_intervals) - 1)
+                        
+                        interval = scale_intervals[degree % len(scale_intervals)]
+                        octave_adjust = degree // len(scale_intervals)
+                        pitch = 12 * (base_octave + 1 + octave_adjust) + (root + interval) % 12
+                    
+                    # Melodische Richtung beachten
+                    if last_pitch:
+                        direction_counter += 1
+                        if direction_counter > random.randint(3, 6):
+                            direction *= -1
+                            direction_counter = 0
+                        
+                        # Bevorzuge Bewegung in der aktuellen Richtung
+                        target = last_pitch + direction * random.randint(1, 4)
+                        
+                        # Finde nächsten Skalenton
+                        best_pitch = pitch
+                        min_diff = abs(pitch - target)
+                        for oct in range(-1, 2):
+                            for interval in scale_intervals:
+                                test_pitch = 12 * (base_octave + 1 + oct) + (root + interval) % 12
+                                diff = abs(test_pitch - target)
+                                if diff < min_diff:
+                                    min_diff = diff
+                                    best_pitch = test_pitch
+                        pitch = best_pitch
+                    
+                    # Notenlänge basierend auf Artikulation
+                    if articulation == 'legato':
+                        duration = ticks_per_eighth * random.choice([2, 3, 4])
+                    elif articulation == 'staccato':
+                        duration = ticks_per_eighth // 2
+                    else:
+                        duration = ticks_per_eighth * random.choice([1, 2])
+                    
+                    velocity = int(55 + current_intensity * 45 + random.randint(-8, 8))
+                    
+                    notes.append({
+                        'pitch': max(48, min(84, pitch)),
+                        'start': current_tick,
+                        'duration': duration,
+                        'velocity': max(40, min(110, velocity))
+                    })
+                    
+                    last_pitch = pitch
                 
-                duration = ticks_per_bar // notes_this_bar
-                velocity = int(60 + current_intensity * 40 + random.randint(-5, 5))
-                
-                notes.append({
-                    'pitch': max(36, min(96, pitch)),  # MIDI range check
-                    'start': current_tick,
-                    'duration': duration,
-                    'velocity': max(40, min(127, velocity))
-                })
-                
-                last_pitch = pitch
-                current_tick += duration
+                current_tick += ticks_per_eighth
+            
+            # Neue Phrase bei Akkordwechsel
+            if (bar + 1) % chord_bars == 0:
+                phrase_start = True
             
             bar += 1
         
@@ -432,47 +532,80 @@ class MagentaGenerator:
     def _generate_lead(self, config: Dict, chords: List[str], chord_bars: int,
                        root: int, scale: str, ticks_per_bar: int,
                        total_bars: int, intensity: List[float]) -> GeneratedSequence:
-        """Generiert Lead/Counter-Melodie"""
+        """Generiert Lead/Counter-Melodie mit charakteristischer Phrasierung"""
         notes = []
         
         octave_offset = config.get('octave_offset', 1)
         base_octave = 4 + octave_offset
         density = config.get('note_density', 0.3)
-        motif_degrees = config.get('motif_degrees', [7, 9, 11])
+        motif_degrees = config.get('motif_degrees', [4, 6, 7, 9])
+        role = config.get('role', 'counter-melody')
+        articulation = config.get('articulation', 'legato')
         
         scale_intervals = SCALE_INTERVALS.get(scale, SCALE_INTERVALS['major'])
         
         current_tick = 0
         bar = 0
-        notes_played = 0
+        last_note_bar = -4
+        phrase_notes = []
         
+        # Lead hat charakteristische Phrasen
         while bar < total_bars:
             # Intensität
             intensity_idx = int((bar / total_bars) * len(intensity))
             current_intensity = intensity[min(intensity_idx, len(intensity) - 1)]
             
-            # Lead spielt seltener, aber garantiere mindestens einige Noten
-            # Mindestens alle 2-4 Takte eine Note
-            bars_since_note = bar - (notes[-1]['start'] // ticks_per_bar if notes else -4)
-            should_play = (bars_since_note >= 3) or (random.random() < density + current_intensity * 0.3)
+            chord_idx = (bar // chord_bars) % len(chords)
+            chord_root, chord_intervals = parse_chord(chords[chord_idx])
             
-            if should_play:
-                degree = random.choice(motif_degrees) if motif_degrees else random.randint(4, 7)
-                interval = scale_intervals[degree % len(scale_intervals)]
+            # Lead spielt in Phrasen, nicht einzelne Noten
+            bars_since_note = bar - last_note_bar
+            
+            # Neue Phrase starten?
+            start_phrase = False
+            if bars_since_note >= 3 and random.random() < 0.4:
+                start_phrase = True
+            elif bars_since_note >= 2 and current_intensity > 0.5 and random.random() < 0.5:
+                start_phrase = True
+            elif role == 'accent' and bar % chord_bars == 0 and random.random() < density:
+                start_phrase = True
+            
+            if start_phrase:
+                # Phrasen-Länge: 2-4 Noten
+                phrase_length = random.randint(2, 4) if density > 0.2 else random.randint(1, 2)
                 
-                pitch = 12 * (base_octave + 1) + (root + interval) % 12
+                for note_in_phrase in range(phrase_length):
+                    # Wähle Tonhöhe aus Motiv
+                    if motif_degrees and random.random() < 0.8:
+                        degree = motif_degrees[note_in_phrase % len(motif_degrees)]
+                    else:
+                        degree = random.randint(3, 8)
+                    
+                    interval = scale_intervals[degree % len(scale_intervals)]
+                    octave_adj = degree // len(scale_intervals)
+                    pitch = 12 * (base_octave + 1 + octave_adj) + (root + interval) % 12
+                    
+                    # Timing innerhalb der Phrase
+                    note_start = current_tick + note_in_phrase * (ticks_per_bar // 2)
+                    
+                    # Notenlänge
+                    if articulation == 'legato':
+                        duration = ticks_per_bar * random.choice([1, 2])
+                    elif articulation == 'staccato':
+                        duration = ticks_per_bar // 4
+                    else:
+                        duration = ticks_per_bar // 2
+                    
+                    velocity = int(45 + current_intensity * 40)
+                    
+                    notes.append({
+                        'pitch': max(55, min(90, pitch)),
+                        'start': note_start,
+                        'duration': duration,
+                        'velocity': max(35, min(95, velocity))
+                    })
                 
-                # Längere Noten für Lead
-                duration = ticks_per_bar * random.randint(1, 3)
-                velocity = int(50 + current_intensity * 35)
-                
-                notes.append({
-                    'pitch': max(48, min(96, pitch)),
-                    'start': current_tick,
-                    'duration': duration,
-                    'velocity': max(40, min(100, velocity))
-                })
-                notes_played += 1
+                last_note_bar = bar + phrase_length // 2
             
             current_tick += ticks_per_bar
             bar += 1
@@ -482,7 +615,7 @@ class MagentaGenerator:
     def _generate_arp(self, config: Dict, chords: List[str], chord_bars: int,
                       root: int, scale: str, ticks_per_bar: int,
                       total_bars: int, intensity: List[float]) -> GeneratedSequence:
-        """Generiert Arpeggio-Pattern"""
+        """Generiert Arpeggio-Pattern mit mehr Variation"""
         notes = []
         
         octave_offset = config.get('octave_offset', 1)
@@ -490,70 +623,111 @@ class MagentaGenerator:
         density = config.get('note_density', 0.5)
         arp_pattern = config.get('arp_pattern', 'up')
         note_length_raw = config.get('note_length_steps', 2)
-        # Handle case where GPT returns a list (e.g., [15, 17] for phasing)
+        rhythm_pattern = config.get('rhythm_pattern', 'flowing')
+        
+        # Handle case where GPT returns a list
         if isinstance(note_length_raw, list):
             note_length = note_length_raw[0] if note_length_raw else 2
         else:
             note_length = note_length_raw
         
-        ticks_per_note = ticks_per_bar // 8  # 8tel Noten Basis
+        scale_intervals = SCALE_INTERVALS.get(scale, SCALE_INTERVALS['major'])
+        
+        # Verschiedene Arp-Subdivisions basierend auf BPM/Style
+        subdivisions = {
+            'sparse': 4,      # Viertelnoten
+            'flowing': 8,     # Achtelnoten
+            'fast': 16,       # Sechzehntelnoten
+            'triplet': 6,     # Triolen
+        }
+        
+        if rhythm_pattern in subdivisions:
+            notes_per_bar = subdivisions[rhythm_pattern]
+        elif density > 0.6:
+            notes_per_bar = 16
+        elif density > 0.3:
+            notes_per_bar = 8
+        else:
+            notes_per_bar = 4
+        
+        ticks_per_note = ticks_per_bar // notes_per_bar
         
         current_tick = 0
         bar = 0
+        arp_position = 0
         
         while bar < total_bars:
             chord_idx = (bar // chord_bars) % len(chords)
             chord_notes = get_chord_notes(chords[chord_idx], base_octave)
             
+            # Erweitere Akkord um Oktaven für mehr Range
+            extended_chord = chord_notes.copy()
+            extended_chord.extend([n + 12 for n in chord_notes])  # Oktave höher
+            if base_octave > 3:
+                extended_chord.extend([n - 12 for n in chord_notes])  # Oktave tiefer
+            extended_chord = sorted(set(extended_chord))
+            
             # Intensität
             intensity_idx = int((bar / total_bars) * len(intensity))
             current_intensity = intensity[min(intensity_idx, len(intensity) - 1)]
             
-            # Arp-Noten pro Takt - mindestens 2-4, bis zu 8 bei hoher Intensität
-            min_notes = max(2, int(4 * density))
-            num_notes = min_notes + int(4 * current_intensity * density)
-            
-            for i in range(num_notes):
-                # Weniger Zufälligkeit, mehr Konsistenz
-                if i >= min_notes and random.random() > 0.6 + current_intensity * 0.2:
+            for note_in_bar in range(notes_per_bar):
+                # Density-Check
+                if random.random() > density + current_intensity * 0.3:
                     current_tick += ticks_per_note
+                    arp_position += 1
                     continue
                 
-                # Arpeggio-Muster
+                # Arpeggio-Muster bestimmt die Note
+                num_notes = len(extended_chord)
+                
                 if arp_pattern == 'up':
-                    note_idx = i % len(chord_notes)
+                    note_idx = arp_position % num_notes
                 elif arp_pattern == 'down':
-                    note_idx = (len(chord_notes) - 1 - i) % len(chord_notes)
+                    note_idx = (num_notes - 1) - (arp_position % num_notes)
                 elif arp_pattern == 'up-down':
-                    cycle = 2 * len(chord_notes) - 2
-                    pos = i % max(1, cycle)
-                    if pos < len(chord_notes):
+                    cycle = max(1, 2 * num_notes - 2)
+                    pos = arp_position % cycle
+                    if pos < num_notes:
                         note_idx = pos
                     else:
                         note_idx = cycle - pos
+                elif arp_pattern == 'random':
+                    note_idx = random.randint(0, num_notes - 1)
+                elif arp_pattern == 'pendulum':
+                    # Pendel-Bewegung mit variabler Geschwindigkeit
+                    cycle = num_notes * 4
+                    pos = arp_position % cycle
+                    note_idx = int(num_notes / 2 + (num_notes / 2) * np.sin(pos * np.pi / num_notes))
+                elif arp_pattern == 'pattern':
+                    # Wiederholendes Pattern wie [0,2,1,2,0,2,1,3]
+                    pattern_seq = [0, 2, 1, 2, 0, 2, 1, 3] if num_notes > 3 else [0, 1, 0, 2]
+                    note_idx = pattern_seq[arp_position % len(pattern_seq)] % num_notes
                 else:
-                    note_idx = random.randint(0, len(chord_notes) - 1)
+                    note_idx = arp_position % num_notes
                 
-                pitch = chord_notes[note_idx % len(chord_notes)]
+                pitch = extended_chord[note_idx % len(extended_chord)]
                 
-                # Manchmal eine Oktave höher
-                if random.random() < 0.3:
-                    pitch += 12
+                # Gelegentliche Oktav-Sprünge für Interesse
+                if random.random() < 0.1 and current_intensity > 0.4:
+                    pitch += random.choice([-12, 12])
                 
                 duration = ticks_per_note * note_length
-                velocity = int(40 + current_intensity * 30 + random.randint(-3, 3))
+                
+                # Velocity mit leichtem Groove (betonte Schläge)
+                accent = 1.2 if note_in_bar % 4 == 0 else (1.1 if note_in_bar % 2 == 0 else 1.0)
+                velocity = int((35 + current_intensity * 35) * accent + random.randint(-5, 5))
                 
                 notes.append({
                     'pitch': max(48, min(96, pitch)),
                     'start': current_tick,
-                    'duration': duration,
-                    'velocity': max(30, min(90, velocity))
+                    'duration': max(ticks_per_note // 2, duration),
+                    'velocity': max(30, min(100, velocity))
                 })
                 
                 current_tick += ticks_per_note
+                arp_position += 1
             
-            # Zum nächsten Takt
-            current_tick = (bar + 1) * ticks_per_bar
             bar += 1
         
         return GeneratedSequence(channel=3, notes=notes, name="Arp")
