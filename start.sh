@@ -74,6 +74,17 @@ get_output_name() {
     echo "$FILENAME"
 }
 
+# Get loop count
+get_loop_count() {
+    echo -e "${YELLOW}Number of loops [Enter = infinite]:${NC}" >&2
+    read -r -p "> " LOOP_COUNT
+    if [ -z "$LOOP_COUNT" ]; then
+        echo ""
+    else
+        echo "--loops $LOOP_COUNT"
+    fi
+}
+
 # Live mode
 live_mode() {
     echo ""
@@ -81,8 +92,10 @@ live_mode() {
     echo ""
     BARS=$(get_bars)
     echo ""
+    LOOP_FLAG=$(get_loop_count)
+    echo ""
     echo -e "${GREEN}▶ Starting Live Mode on '$DEVICE' with $BARS bars...${NC}\n"
-    "$VENV_PYTHON" "$SEQUENCER" --device "$DEVICE" --bars "$BARS"
+    "$VENV_PYTHON" "$SEQUENCER" --device "$DEVICE" --bars "$BARS" $LOOP_FLAG
 }
 
 # Generate only
@@ -118,8 +131,10 @@ custom_prompt() {
     if [ "$OUTPUT_MODE" = "1" ]; then
         DEVICE=$(select_device)
         echo ""
+        LOOP_FLAG=$(get_loop_count)
+        echo ""
         echo -e "${GREEN}▶ Starting with prompt: '$PROMPT_TEXT'${NC}\n"
-        "$VENV_PYTHON" "$SEQUENCER" --device "$DEVICE" --bars "$BARS" --text "$PROMPT_TEXT"
+        "$VENV_PYTHON" "$SEQUENCER" --device "$DEVICE" --bars "$BARS" --text "$PROMPT_TEXT" $LOOP_FLAG
     else
         FILENAME=$(get_output_name)
         echo ""
@@ -164,8 +179,10 @@ load_plan() {
     if [ "$OUTPUT_MODE" = "1" ]; then
         DEVICE=$(select_device)
         echo ""
+        LOOP_FLAG=$(get_loop_count)
+        echo ""
         echo -e "${GREEN}▶ Loading plan: $PLAN_FILE${NC}\n"
-        "$VENV_PYTHON" "$SEQUENCER" --device "$DEVICE" --plan "$PLAN_FILE"
+        "$VENV_PYTHON" "$SEQUENCER" --device "$DEVICE" --plan "$PLAN_FILE" $LOOP_FLAG
     else
         echo -e "${GREEN}▶ Loading plan: $PLAN_FILE${NC}\n"
         "$VENV_PYTHON" "$SEQUENCER" --generate-only --plan "$PLAN_FILE"
