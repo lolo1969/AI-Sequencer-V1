@@ -22,6 +22,12 @@ from dataclasses import dataclass
 import mido
 from mido import Message, MidiFile, MidiTrack
 
+# ==================== Konstanten ====================
+
+# Mindest-Gate-Zeit in Ticks (bei 480 PPQN und 120 BPM = ca. 30ms)
+# Verhindert Klicks durch zu kurze Noten
+MIN_GATE_TICKS = 24  # Ca. 1/20 einer Viertelnote
+
 # Type hints für CompositionPlan (Import wird umgangen um circular import zu vermeiden)
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
@@ -157,6 +163,20 @@ def get_chord_notes(chord_str: str, octave: int = 4) -> List[int]:
     root, intervals = parse_chord(chord_str)
     base = 12 * (octave + 1) + root
     return [base + i for i in intervals]
+
+
+def create_note(pitch: int, start: int, duration: int, velocity: int,
+                min_pitch: int = 24, max_pitch: int = 108) -> Dict[str, Any]:
+    """
+    Erstellt eine Note mit validierten Werten.
+    Stellt sicher dass Duration >= MIN_GATE_TICKS um Klicks zu vermeiden.
+    """
+    return {
+        'pitch': max(min_pitch, min(max_pitch, pitch)),
+        'start': start,
+        'duration': max(MIN_GATE_TICKS, duration),
+        'velocity': max(1, min(127, velocity))
+    }
 
 
 # ==================== MIDI Generation ====================

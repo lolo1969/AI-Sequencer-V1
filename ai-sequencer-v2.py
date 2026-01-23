@@ -310,6 +310,17 @@ class LiveSequencer:
             self.port.send(Message('note_off', channel=channel, note=pitch, velocity=64))
             self.active_notes[channel] = [n for n in self.active_notes[channel] if n['pitch'] != pitch]
     
+    def note_retrigger(self, channel: int, pitch: int, velocity: int):
+        """Re-triggers a note with a small gap to avoid clicks"""
+        if self.port:
+            # Erst Note-Off
+            self.port.send(Message('note_off', channel=channel, note=pitch, velocity=64))
+            # Kleine Pause (1-2ms) damit der Synth die Note sauber retriggern kann
+            time.sleep(0.002)
+            # Dann Note-On
+            velocity = max(1, min(127, velocity))
+            self.port.send(Message('note_on', channel=channel, note=pitch, velocity=velocity))
+    
     def run(self):
         """Main loop for live playback"""
         global running
@@ -415,26 +426,31 @@ class LiveSequencer:
             # Dann alle Note-Ons verarbeiten
             for note in seq.notes:
                 if note['start'] == current_pos:
-                    # WICHTIG: Erst Note-Off senden falls dieselbe Note bereits aktiv ist
-                    # (verhindert "stuck notes" bei überlappenden Noten)
+                    # Sicherstellen dass Velocity gültig ist (1-127)
+                    velocity = max(1, min(127, note['velocity']))
+                    
+                    # Prüfen ob dieselbe Note bereits aktiv ist
                     is_already_active = any(
                         n['pitch'] == note['pitch'] 
                         for n in self.active_notes[seq.channel]
                     )
-                    if is_already_active:
-                        self.note_off(seq.channel, note['pitch'])
                     
-                    # Sicherstellen dass Velocity gültig ist (1-127)
-                    velocity = max(1, min(127, note['velocity']))
-                    self.note_on(seq.channel, note['pitch'], velocity)
+                    if is_already_active:
+                        # Re-trigger mit kleiner Pause um Klicks zu vermeiden
+                        self.note_retrigger(seq.channel, note['pitch'], velocity)
+                    else:
+                        self.note_on(seq.channel, note['pitch'], velocity)
     
     def _all_notes_off_for_channel(self, channel: int):
         """Schaltet alle aktiven Noten auf einem Kanal aus"""
-        for note_info in self.active_notes[channel]:
-            if self.port:
-                self.port.send(Message('note_off', channel=channel, 
-                                       note=note_info['pitch'], velocity=0))
-        self.active_notes[channel] = []
+        if self.active_notes[channel]:
+            for note_info in self.active_notes[channel]:
+                if self.port:
+                    self.port.send(Message('note_off', channel=channel, 
+                                           note=note_info['pitch'], velocity=64))
+            # Kurze Pause nach dem Ausschalten um Klicks zu vermeiden
+            time.sleep(0.002)
+            self.active_notes[channel] = []
 
 
 # ==================== Main Pipeline ====================
