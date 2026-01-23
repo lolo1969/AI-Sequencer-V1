@@ -76,9 +76,12 @@ midi_out = None
 
 def signal_handler(sig, frame):
     """Handle Ctrl+C gracefully"""
-    global running
+    global running, midi_out
     print("\n\n[Sequencer] 🛑 Shutdown signal received...")
     running = False
+    # Sofort alle Noten ausschalten
+    if midi_out:
+        all_notes_off(midi_out)
 
 
 signal.signal(signal.SIGINT, signal_handler)
@@ -132,12 +135,25 @@ def open_midi_output(device_hint: str) -> Optional[mido.ports.BaseOutput]:
 
 
 def all_notes_off(port: mido.ports.BaseOutput):
-    """Turns off all notes on all channels"""
+    """Turns off all notes on all channels - MIDI Panic"""
     if port:
-        for channel in range(4):
-            for note in range(128):
-                port.send(Message('note_off', channel=channel, note=note, velocity=0))
+        print("[MIDI] 🔇 Sending All Notes Off (MIDI Panic)...")
+        for channel in range(16):  # Alle 16 MIDI-Kanäle
+            # CC 123 = All Notes Off
             port.send(Message('control_change', channel=channel, control=123, value=0))
+            # CC 120 = All Sound Off (wichtig für Synths!)
+            port.send(Message('control_change', channel=channel, control=120, value=0))
+            # CC 121 = Reset All Controllers
+            port.send(Message('control_change', channel=channel, control=121, value=0))
+            
+            # Zusätzlich explizite Note-Off für alle Noten senden
+            for note in range(128):
+                # Note-On mit velocity=0 ist universeller Note-Off
+                port.send(Message('note_on', channel=channel, note=note, velocity=0))
+        
+        # Kleine Pause damit alle Messages ankommen
+        time.sleep(0.1)
+        print("[MIDI] ✓ All notes silenced")
 
 
 # ==================== Evolution Engine ====================
@@ -163,6 +179,12 @@ class EvolutionEngine:
         Intensity: 0.0 = no changes, 1.0 = many changes
         """
         for channel_name, seq in self.sequences.items():
+            # OXI ONE / Modular Pitch-Grenzen: Bass (Kanal 0) = 48-72 (C3-C5), andere = 36-96
+            if seq.channel == 0:  # Bass
+                min_pitch, max_pitch = 48, 72
+            else:
+                min_pitch, max_pitch = 36, 96
+            
             for note in seq.notes:
                 if random.random() < self.evolution_rate * intensity:
                     mutation = random.choice(['pitch', 'velocity', 'timing', 'duration'])
@@ -170,7 +192,7 @@ class EvolutionEngine:
                     if mutation == 'pitch':
                         # Small pitch change (max 2 semitones)
                         shift = random.choice([-2, -1, 1, 2])
-                        note['pitch'] = max(24, min(108, note['pitch'] + shift))
+                        note['pitch'] = max(min_pitch, min(max_pitch, note['pitch'] + shift))
                         self.mutations_count += 1
                     
                     elif mutation == 'velocity':
@@ -196,6 +218,12 @@ class EvolutionEngine:
         if random.random() < 0.02 * intensity:  # 2% chance at full intensity
             seq = self.sequences.get(channel_name)
             if seq and seq.notes:
+                # OXI ONE / Modular Pitch-Grenzen: Bass (Kanal 0) = 48-72 (C3-C5), andere = 36-96
+                if seq.channel == 0:  # Bass
+                    min_pitch, max_pitch = 48, 72
+                else:
+                    min_pitch, max_pitch = 36, 96
+                
                 # Base new note on existing ones
                 reference = random.choice(seq.notes)
                 new_note = {
@@ -204,7 +232,7 @@ class EvolutionEngine:
                     'duration': reference['duration'],
                     'velocity': reference['velocity']
                 }
-                new_note['pitch'] = max(24, min(108, new_note['pitch']))
+                new_note['pitch'] = max(min_pitch, min(max_pitch, new_note['pitch']))
                 seq.notes.append(new_note)
     
     def remove_note(self, channel_name: str, intensity: float):
@@ -270,13 +298,16 @@ class LiveSequencer:
     def note_on(self, channel: int, pitch: int, velocity: int):
         """Sends Note-On"""
         if self.port:
+            # Velocity muss mindestens 1 sein für Note-On
+            velocity = max(1, min(127, velocity))
             self.port.send(Message('note_on', channel=channel, note=pitch, velocity=velocity))
             self.active_notes[channel].append({'pitch': pitch, 'start_time': time.time()})
     
     def note_off(self, channel: int, pitch: int):
         """Sends Note-Off"""
         if self.port:
-            self.port.send(Message('note_off', channel=channel, note=pitch, velocity=0))
+            # Echte Note-Off Nachricht (nicht Note-On mit velocity=0)
+            self.port.send(Message('note_off', channel=channel, note=pitch, velocity=64))
             self.active_notes[channel] = [n for n in self.active_notes[channel] if n['pitch'] != pitch]
     
     def run(self):
@@ -285,9 +316,15 @@ class LiveSequencer:
         
         print(f"\n[Sequencer] 🎵 Starting playback...")
         print(f"[Sequencer] BPM: {self.bpm}")
-        print(f"[Sequencer] Loop length: {self.plan.duration_bars} bars")
+        print(f"[Sequencer] Loop length: {self.plan.duration_bars} bars ({self.loop_length} ticks)")
         print(f"[Sequencer] Key: {self.plan.key} {self.plan.scale}")
         print(f"[Sequencer] Loops: {'Infinite' if self.max_loops == 0 else self.max_loops}")
+        print(f"[Sequencer] MIDI Channels: Bass=1, Melody=2, Lead=3, Arp=4")
+        
+        # Show note count per channel
+        for name, seq in self.sequences.items():
+            print(f"[Sequencer]   {name}: {len(seq.notes)} notes on ch {seq.channel + 1}")
+        
         print(f"[Sequencer] Press Ctrl+C to stop\n")
         
         # Send MIDI Start
@@ -314,6 +351,10 @@ class LiveSequencer:
                     
                     # Reset loop
                     if self.current_tick >= self.loop_length:
+                        # Alle aktiven Noten ausschalten vor Loop-Reset
+                        for channel in range(4):
+                            self._all_notes_off_for_channel(channel)
+                        
                         loop_count += 1
                         
                         # With limited loops: stop when reached
@@ -353,16 +394,47 @@ class LiveSequencer:
     
     def _process_notes(self):
         """Verarbeitet Noten für den aktuellen Tick"""
+        current_pos = self.current_tick % self.loop_length
+        
         for channel_name, seq in self.sequences.items():
+            # Erst alle Note-Offs verarbeiten (wichtig für Gate-Timing!)
             for note in seq.notes:
-                # Note-On
-                if note['start'] == self.current_tick % self.loop_length:
-                    self.note_on(seq.channel, note['pitch'], note['velocity'])
+                note_end = note['start'] + note['duration']
                 
-                # Note-Off
-                end_tick = (note['start'] + note['duration']) % self.loop_length
-                if end_tick == self.current_tick % self.loop_length:
-                    self.note_off(seq.channel, note['pitch'])
+                # Note-Off: wenn die Note hier endet
+                # Auch prüfen ob Note über Loop-Ende hinausgeht
+                if note_end <= self.loop_length:
+                    if note_end == current_pos:
+                        self.note_off(seq.channel, note['pitch'])
+                else:
+                    # Note geht über Loop-Ende - Note-Off am Anfang des nächsten Loops
+                    wrapped_end = note_end % self.loop_length
+                    if wrapped_end == current_pos:
+                        self.note_off(seq.channel, note['pitch'])
+            
+            # Dann alle Note-Ons verarbeiten
+            for note in seq.notes:
+                if note['start'] == current_pos:
+                    # WICHTIG: Erst Note-Off senden falls dieselbe Note bereits aktiv ist
+                    # (verhindert "stuck notes" bei überlappenden Noten)
+                    is_already_active = any(
+                        n['pitch'] == note['pitch'] 
+                        for n in self.active_notes[seq.channel]
+                    )
+                    if is_already_active:
+                        self.note_off(seq.channel, note['pitch'])
+                    
+                    # Sicherstellen dass Velocity gültig ist (1-127)
+                    velocity = max(1, min(127, note['velocity']))
+                    self.note_on(seq.channel, note['pitch'], velocity)
+    
+    def _all_notes_off_for_channel(self, channel: int):
+        """Schaltet alle aktiven Noten auf einem Kanal aus"""
+        for note_info in self.active_notes[channel]:
+            if self.port:
+                self.port.send(Message('note_off', channel=channel, 
+                                       note=note_info['pitch'], velocity=0))
+        self.active_notes[channel] = []
 
 
 # ==================== Main Pipeline ====================
@@ -445,6 +517,8 @@ class AISequencerV2:
         Args:
             loops: Number of loops (0 = infinite)
         """
+        global midi_out
+        
         if not self.sequences or not self.plan:
             raise ValueError("No sequences available. Call generate_midi() first.")
         
@@ -458,6 +532,9 @@ class AISequencerV2:
             print("[Error] Could not open MIDI")
             return
         
+        # Setze globale Variable für Signal Handler
+        midi_out = port
+        
         try:
             sequencer = LiveSequencer(port, self.sequences, self.plan, loops=loops)
             sequencer.run()
@@ -465,6 +542,7 @@ class AISequencerV2:
             if port:
                 all_notes_off(port)
                 port.close()
+            midi_out = None
     
     def run_full_pipeline(self, prompt: str, duration_bars: int = 32, 
                           live: bool = True, save_midi: bool = True,

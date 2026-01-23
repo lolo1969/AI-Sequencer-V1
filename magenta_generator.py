@@ -270,8 +270,13 @@ class MagentaGenerator:
         """Generiert Bass-Linie mit mehr Variation"""
         notes = []
         
-        octave_offset = config.get('octave_offset', -1)
-        base_octave = 2 + octave_offset  # Bass-Bereich
+        # OXI ONE / Modular Pitch-Grenzen für Bass: 48 (C3) bis 72 (C5)
+        MIN_BASS_PITCH = 48
+        MAX_BASS_PITCH = 72
+        
+        # Bass-Oktave: FEST bei Oktave 4 - octave_offset wird ignoriert da GPT oft zu tiefe Werte gibt
+        base_octave = 4  # MIDI 48-59 für Oktave 4
+        
         density = config.get('note_density', 0.2)
         pattern = config.get('rhythm_pattern', 'sustained')
         role = config.get('role', 'root')
@@ -291,11 +296,16 @@ class MagentaGenerator:
             intensity_idx = int((bar / total_bars) * len(intensity))
             current_intensity = intensity[min(intensity_idx, len(intensity) - 1)]
             
-            # Bass-Noten: Grundton + optional Quinte oder Oktave
+            # Bass-Noten berechnen (vor dem Clamping)
+            raw_root = 12 * base_octave + chord_root
+            raw_fifth = 12 * base_octave + chord_root + 7
+            raw_octave = 12 * (base_octave + 1) + chord_root  # Oktave HÖHER
+            
+            # Bass-Noten: Grundton, Quinte, Oktave höher (alle im OXI-kompatiblen Bereich)
             bass_notes_options = [
-                12 * (base_octave + 1) + chord_root,  # Grundton
-                12 * (base_octave + 1) + chord_root + 7,  # Quinte
-                12 * (base_octave) + chord_root,  # Oktave tiefer
+                max(MIN_BASS_PITCH, min(MAX_BASS_PITCH, raw_root)),      # Grundton
+                max(MIN_BASS_PITCH, min(MAX_BASS_PITCH, raw_fifth)),     # Quinte
+                max(MIN_BASS_PITCH, min(MAX_BASS_PITCH, raw_octave)),    # Oktave höher
             ]
             
             # Velocity basierend auf Intensität
@@ -343,9 +353,10 @@ class MagentaGenerator:
                     elif beat == 2:
                         bass_note = bass_notes_options[1]  # Quinte
                     else:
-                        # Durchgangston aus der Skala
+                        # Durchgangston aus der Skala (mit OXI-Begrenzung)
                         passing_interval = random.choice(scale_intervals[1:4])
-                        bass_note = 12 * (base_octave + 1) + (chord_root + passing_interval) % 12
+                        bass_note = max(MIN_BASS_PITCH, min(MAX_BASS_PITCH, 
+                                       12 * base_octave + (chord_root + passing_interval) % 12))
                     
                     notes.append({
                         'pitch': bass_note,
