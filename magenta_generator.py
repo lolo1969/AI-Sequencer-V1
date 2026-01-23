@@ -290,6 +290,9 @@ class MagentaGenerator:
         """Generiert Bass-Linie mit mehr Variation"""
         notes = []
         
+        # Sicherstellen dass chord_bars ein int ist (GPT gibt manchmal Strings zurück)
+        chord_bars = int(chord_bars) if chord_bars else 4
+        
         # OXI ONE / Modular Pitch-Grenzen für Bass: 48 (C3) bis 72 (C5)
         MIN_BASS_PITCH = 48
         MAX_BASS_PITCH = 72
@@ -437,6 +440,9 @@ class MagentaGenerator:
         """Algorithmische Melodie-Generierung mit mehr Variation"""
         notes = []
         
+        # Sicherstellen dass chord_bars ein int ist
+        chord_bars = int(chord_bars) if chord_bars else 4
+        
         octave_offset = config.get('octave_offset', 0)
         base_octave = 4 + octave_offset
         density = config.get('note_density', 0.4)
@@ -571,6 +577,9 @@ class MagentaGenerator:
         """Generiert Lead/Counter-Melodie mit charakteristischer Phrasierung"""
         notes = []
         
+        # Sicherstellen dass chord_bars ein int ist
+        chord_bars = int(chord_bars) if chord_bars else 4
+        
         octave_offset = config.get('octave_offset', 1)
         base_octave = 4 + octave_offset
         density = config.get('note_density', 0.3)
@@ -653,6 +662,9 @@ class MagentaGenerator:
                       total_bars: int, intensity: List[float]) -> GeneratedSequence:
         """Generiert Arpeggio-Pattern mit mehr Variation"""
         notes = []
+        
+        # Sicherstellen dass chord_bars ein int ist
+        chord_bars = int(chord_bars) if chord_bars else 4
         
         octave_offset = config.get('octave_offset', 1)
         base_octave = 4 + octave_offset
