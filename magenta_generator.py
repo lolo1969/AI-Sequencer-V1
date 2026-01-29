@@ -471,6 +471,10 @@ class MagentaGenerator:
         direction = 1  # 1 = aufwärts, -1 = abwärts
         direction_counter = 0
         
+        # Berechne minimale Noten pro Takt basierend auf density
+        # density 0.1 = ~1 Note/Takt, density 0.9 = ~6 Noten/Takt
+        min_notes_per_bar = max(1, int(density * 6))
+        
         while bar < total_bars:
             chord_idx = (bar // chord_bars) % len(chords)
             chord_root, chord_intervals = parse_chord(chords[chord_idx])
@@ -482,16 +486,23 @@ class MagentaGenerator:
             
             # 8tel-Noten Grid
             ticks_per_eighth = ticks_per_bar // 8
+            notes_this_bar = 0
             
             for eighth in range(8):
-                # Rhythmus-Wahrscheinlichkeit aus Template + Intensity
+                # VERBESSERT: Höhere Basis-Wahrscheinlichkeit
                 base_prob = rhythm_template[eighth]
-                play_prob = base_prob * density * (0.5 + current_intensity)
+                # Mindestens 20% Basis + density-Faktor + intensity-Boost
+                play_prob = 0.2 + base_prob * density * 0.5 + current_intensity * 0.3
                 
                 # Phrasen-Anfang hat höhere Wahrscheinlichkeit
                 if phrase_start:
-                    play_prob = min(1.0, play_prob * 1.5)
+                    play_prob = min(1.0, play_prob + 0.3)
                     phrase_start = False
+                
+                # Garantiere Mindestanzahl Noten pro Takt
+                remaining_eighths = 8 - eighth
+                if notes_this_bar < min_notes_per_bar and remaining_eighths <= (min_notes_per_bar - notes_this_bar):
+                    play_prob = 0.9  # Fast garantiert
                 
                 if random.random() < play_prob:
                     # Wähle Tonhöhe
@@ -549,6 +560,7 @@ class MagentaGenerator:
                     })
                     
                     last_pitch = pitch
+                    notes_this_bar += 1
                 
                 current_tick += ticks_per_eighth
             
@@ -594,6 +606,10 @@ class MagentaGenerator:
         last_note_bar = -4
         phrase_notes = []
         
+        # Berechne Phrasen-Intervall basierend auf Density
+        # density 0.1 = alle 8 Takte, density 0.9 = jeden Takt
+        phrase_interval = max(1, int(8 - density * 7))
+        
         # Lead hat charakteristische Phrasen
         while bar < total_bars:
             # Intensität
@@ -606,18 +622,30 @@ class MagentaGenerator:
             # Lead spielt in Phrasen, nicht einzelne Noten
             bars_since_note = bar - last_note_bar
             
-            # Neue Phrase starten?
+            # Neue Phrase starten? - VERBESSERTE LOGIK
             start_phrase = False
-            if bars_since_note >= 3 and random.random() < 0.4:
+            
+            # Basis-Wahrscheinlichkeit aus Density und Intensität
+            base_probability = density * 0.5 + current_intensity * 0.3
+            
+            # Garantierte Phrase wenn zu lange nichts gespielt wurde
+            if bars_since_note >= phrase_interval:
                 start_phrase = True
-            elif bars_since_note >= 2 and current_intensity > 0.5 and random.random() < 0.5:
+            # Akkordwechsel = gute Gelegenheit für neue Phrase
+            elif bar % chord_bars == 0 and random.random() < base_probability + 0.2:
                 start_phrase = True
-            elif role == 'accent' and bar % chord_bars == 0 and random.random() < density:
+            # Normale Phrasen-Chance basierend auf density und intensity
+            elif bars_since_note >= 2 and random.random() < base_probability:
+                start_phrase = True
+            # Bei hoher Intensität: mehr Lead-Aktivität
+            elif current_intensity > 0.6 and bars_since_note >= 1 and random.random() < density * 0.4:
                 start_phrase = True
             
             if start_phrase:
-                # Phrasen-Länge: 2-4 Noten
-                phrase_length = random.randint(2, 4) if density > 0.2 else random.randint(1, 2)
+                # Phrasen-Länge: abhängig von density (2-6 Noten)
+                min_phrase = max(2, int(density * 4))
+                max_phrase = max(3, int(density * 6) + 1)
+                phrase_length = random.randint(min_phrase, max_phrase)
                 
                 for note_in_phrase in range(phrase_length):
                     # Wähle Tonhöhe aus Motiv
@@ -868,6 +896,65 @@ class MagentaGenerator:
                         'channel_name': channel_name
                     })
         return sorted(notes, key=lambda n: n['start'])
+
+    def load_from_midi_file(self, midi_path: str) -> Dict[str, GeneratedSequence]:
+        """
+        Lädt Sequenzen aus einer existierenden MIDI-Datei.
+        Dies stellt sicher, dass die Live-Wiedergabe exakt der gespeicherten Datei entspricht.
+        """
+        try:
+            mid = MidiFile(midi_path)
+            print(f"[MagentaGen] Lade MIDI: {midi_path}")
+            print(f"[MagentaGen] Ticks per beat: {mid.ticks_per_beat}")
+            
+            # Channel-Namen Mapping
+            channel_names = {0: 'bass', 1: 'melody', 2: 'lead', 3: 'arp'}
+            sequences = {}
+            
+            for track in mid.tracks:
+                notes = []
+                abs_time = 0
+                active_notes = {}  # pitch -> start_time, velocity
+                channel = None
+                
+                for msg in track:
+                    abs_time += msg.time
+                    
+                    if hasattr(msg, 'channel'):
+                        channel = msg.channel
+                    
+                    if msg.type == 'note_on' and msg.velocity > 0:
+                        # Note-On: merke Startzeit
+                        active_notes[msg.note] = {
+                            'start': abs_time,
+                            'velocity': msg.velocity
+                        }
+                    elif msg.type == 'note_off' or (msg.type == 'note_on' and msg.velocity == 0):
+                        # Note-Off: erstelle Note
+                        if msg.note in active_notes:
+                            start_info = active_notes.pop(msg.note)
+                            notes.append({
+                                'pitch': msg.note,
+                                'start': start_info['start'],
+                                'duration': abs_time - start_info['start'],
+                                'velocity': start_info['velocity']
+                            })
+                
+                if notes and channel is not None:
+                    name = channel_names.get(channel, f'track_{channel}')
+                    sequences[name] = GeneratedSequence(
+                        channel=channel,
+                        notes=notes,
+                        name=name.capitalize()
+                    )
+                    print(f"[MagentaGen]   {name}: {len(notes)} Noten geladen")
+            
+            print(f"[MagentaGen] ✓ {len(sequences)} Tracks geladen")
+            return sequences
+            
+        except Exception as e:
+            print(f"[MagentaGen] Fehler beim Laden der MIDI-Datei: {e}")
+            return {}
 
 
 # ==================== Test ====================

@@ -315,11 +315,14 @@ class LiveSequencer:
         if self.port:
             # Erst Note-Off
             self.port.send(Message('note_off', channel=channel, note=pitch, velocity=64))
-            # Kleine Pause (1-2ms) damit der Synth die Note sauber retriggern kann
-            time.sleep(0.002)
+            # Entferne aus active_notes
+            self.active_notes[channel] = [n for n in self.active_notes[channel] if n['pitch'] != pitch]
+            # Pause (3-5ms) damit der Synth die Note sauber retriggern kann
+            time.sleep(0.004)
             # Dann Note-On
             velocity = max(1, min(127, velocity))
             self.port.send(Message('note_on', channel=channel, note=pitch, velocity=velocity))
+            self.active_notes[channel].append({'pitch': pitch, 'start_time': time.time()})
     
     def run(self):
         """Main loop for live playback"""
@@ -407,39 +410,49 @@ class LiveSequencer:
         """Verarbeitet Noten für den aktuellen Tick"""
         current_pos = self.current_tick % self.loop_length
         
+        # Sammle alle Events für diesen Tick
+        note_offs = []
+        note_ons = []
+        
         for channel_name, seq in self.sequences.items():
-            # Erst alle Note-Offs verarbeiten (wichtig für Gate-Timing!)
+            # Sammle Note-Offs
             for note in seq.notes:
                 note_end = note['start'] + note['duration']
                 
-                # Note-Off: wenn die Note hier endet
-                # Auch prüfen ob Note über Loop-Ende hinausgeht
                 if note_end <= self.loop_length:
                     if note_end == current_pos:
-                        self.note_off(seq.channel, note['pitch'])
+                        note_offs.append((seq.channel, note['pitch']))
                 else:
-                    # Note geht über Loop-Ende - Note-Off am Anfang des nächsten Loops
                     wrapped_end = note_end % self.loop_length
                     if wrapped_end == current_pos:
-                        self.note_off(seq.channel, note['pitch'])
+                        note_offs.append((seq.channel, note['pitch']))
             
-            # Dann alle Note-Ons verarbeiten
+            # Sammle Note-Ons
             for note in seq.notes:
                 if note['start'] == current_pos:
-                    # Sicherstellen dass Velocity gültig ist (1-127)
                     velocity = max(1, min(127, note['velocity']))
-                    
-                    # Prüfen ob dieselbe Note bereits aktiv ist
-                    is_already_active = any(
-                        n['pitch'] == note['pitch'] 
-                        for n in self.active_notes[seq.channel]
-                    )
-                    
-                    if is_already_active:
-                        # Re-trigger mit kleiner Pause um Klicks zu vermeiden
-                        self.note_retrigger(seq.channel, note['pitch'], velocity)
-                    else:
-                        self.note_on(seq.channel, note['pitch'], velocity)
+                    note_ons.append((seq.channel, note['pitch'], velocity))
+        
+        # Erst ALLE Note-Offs senden
+        for channel, pitch in note_offs:
+            self.note_off(channel, pitch)
+        
+        # Kleine Pause zwischen Note-Offs und Note-Ons (verhindert Klicks)
+        if note_offs and note_ons:
+            time.sleep(0.001)
+        
+        # Dann ALLE Note-Ons senden
+        for channel, pitch, velocity in note_ons:
+            # Prüfen ob dieselbe Note bereits aktiv ist
+            is_already_active = any(
+                n['pitch'] == pitch 
+                for n in self.active_notes[channel]
+            )
+            
+            if is_already_active:
+                self.note_retrigger(channel, pitch, velocity)
+            else:
+                self.note_on(channel, pitch, velocity)
     
     def _all_notes_off_for_channel(self, channel: int):
         """Schaltet alle aktiven Noten auf einem Kanal aus"""
@@ -525,6 +538,14 @@ class AISequencerV2:
         self.plan = self.composer._dict_to_plan(data)
         print(f"[Sequencer] Plan loaded: {self.plan.title}")
         return self.plan
+    
+    def load_midi(self, midi_path: str) -> Dict[str, GeneratedSequence]:
+        """
+        Loads sequences from an existing MIDI file.
+        This ensures live playback matches the saved file exactly.
+        """
+        self.sequences = self.generator.load_from_midi_file(midi_path)
+        return self.sequences
     
     def play_live(self, loops: int = 0):
         """
@@ -647,6 +668,9 @@ Examples:
     parser.add_argument('--plan', type=str, default=None,
                         help='Path to saved composition plan (JSON)')
     
+    parser.add_argument('--midi', '-m', type=str, default=None,
+                        help='Path to MIDI file to play (requires --plan)')
+    
     parser.add_argument('--bars', '-b', type=int, default=32,
                         help='Number of bars (default: 32)')
     
@@ -680,7 +704,22 @@ Examples:
     # Load plan or generate new
     if args.plan:
         sequencer.load_plan(args.plan)
-        sequencer.generate_midi()
+        
+        # Versuche die entsprechende MIDI-Datei zu laden statt neu zu generieren
+        # Das stellt sicher, dass die Live-Wiedergabe exakt der gespeicherten Datei entspricht
+        if args.midi:
+            # Explizit angegebene MIDI-Datei
+            midi_path = args.midi
+        else:
+            # Automatisch die passende MIDI-Datei suchen
+            midi_path = args.plan.replace('_plan.json', '.mid')
+        
+        if os.path.exists(midi_path):
+            print(f"[Sequencer] Lade existierende MIDI-Datei: {midi_path}")
+            sequencer.load_midi(midi_path)
+        else:
+            print(f"[Sequencer] Keine MIDI-Datei gefunden ({midi_path}), generiere neu...")
+            sequencer.generate_midi()
         
         # Save MIDI if requested
         if args.output:
